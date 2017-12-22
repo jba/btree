@@ -5,8 +5,19 @@
 This package provides an in-memory B-Tree implementation for Go, useful as
 an ordered, mutable data structure.
 
-The API is based off of the wonderful
-http://godoc.org/github.com/petar/GoLLRB/llrb, and is meant to allow btree to
-act as a drop-in replacement for gollrb trees.
+This is a fork of github.com/google/btree with an improved API:
 
-See http://godoc.org/github.com/google/btree for documentation.
+- Separate keys and values. With the single type `Item` it could be awkward to
+  construct an item solely for use as a key.
+  
+- Instead of eight separate methods for iterating, two methods, `After` and
+  `Before`, return a `Cursor` that can be used to iterate in either
+  direction:
+  ```
+  c := t.Before(k)
+  for c.Next() {
+      // First key will be k, if it's present.
+      fmt.Println(c.Key, c.Value)
+  }
+  ```
+
