@@ -825,7 +825,7 @@ func (a Int) Less(b Item) bool {
 	return a < b.(Int)
 }
 
-func (t *BTree) After(key Key) *Cursor {
+func (t *BTree) After(key Key) *Iterator {
 	// Find item at key, or just after.
 	item, nodes := t.atOrAfter(key)
 	if item == nil {
@@ -838,7 +838,7 @@ func (t *BTree) After(key Key) *Cursor {
 	}
 }
 
-func (t *BTree) Before(key Key) *Cursor {
+func (t *BTree) Before(key Key) *Iterator {
 	// Find item at key, or just before.
 }
 
@@ -847,7 +847,7 @@ type nodeWithIndex struct {
 	index int
 }
 
-type Cursor struct {
+type Iterator struct {
 	Key   Key
 	Value interface{}
 
@@ -855,7 +855,7 @@ type Cursor struct {
 }
 
 // Next returns the item immediately following i, or nil if there is none.
-func (c *Cursor) Next() bool {
+func (c *Iterator) Next() bool {
 	if c == nil {
 		return false
 	}
@@ -867,5 +867,5 @@ func (c *Cursor) Next() bool {
 }
 
 // Prev returns the item immediately preceding i, or nil if there is none.
-func (c *Cursor) Prev() *Cursor {
+func (c *Iterator) Prev() *Iterator {
 }
