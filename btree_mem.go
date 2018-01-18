@@ -24,7 +24,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/google/btree"
+	"github.com/jba/btree"
 	"github.com/petar/GoLLRB/llrb"
 )
 
@@ -56,7 +56,7 @@ func main() {
 	} else {
 		tr := btree.New(*degree)
 		for _, v := range vals {
-			tr.ReplaceOrInsert(btree.Int(v))
+			tr.Set(Int(v), v)
 		}
 		t = tr // keep it around
 	}
@@ -73,4 +73,12 @@ func main() {
 	if t == v {
 		fmt.Println("to make sure vals and tree aren't GC'd")
 	}
+}
+
+// Int implements the Key interface for integers.
+type Int int
+
+// Less returns true if int(a) < int(b).
+func (a Int) Less(b btree.Key) bool {
+	return a < b.(Int)
 }
