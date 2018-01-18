@@ -703,3 +703,11 @@ func TestCloneConcurrentOperations(t *testing.T) {
 		}
 	}
 }
+
+// Int implements the Key interface for integers.
+type Int int
+
+// Less returns true if int(a) < int(b).
+func (a Int) Less(b Key) bool {
+	return a < b.(Int)
+}

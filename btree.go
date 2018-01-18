@@ -779,14 +779,6 @@ func (t *BTree) Len() int {
 	return t.length
 }
 
-// Int implements the Key interface for integers.
-type Int int
-
-// Less returns true if int(a) < int(b).
-func (a Int) Less(b Key) bool {
-	return a < b.(Int)
-}
-
 // func (t *BTree) After(key Key) *Iterator {
 // 	// Find item at key, or just after.
 // 	item, nodes := t.atOrAfter(key)
