@@ -285,8 +285,12 @@ func (n *node) insert(item Item, maxItems int) (old Value, present bool) {
 	return n.mutableChild(i).insert(item, maxItems)
 }
 
-// get finds the given key in the subtree and returns it.
+// get finds the given key in the subtree and returns the corresponding Item, along with a boolean reporting
+// whether it was found.
 func (n *node) get(key Key) (Item, bool) {
+	if n == nil {
+		return Item{}, false
+	}
 	i, found := n.items.find(key)
 	if found {
 		return n.items[i], true
@@ -294,34 +298,6 @@ func (n *node) get(key Key) (Item, bool) {
 		return n.children[i].get(key)
 	}
 	return Item{}, false
-}
-
-// min returns the first item in the subtree.
-func min(n *node) Item {
-	if n == nil {
-		return Item{}
-	}
-	for len(n.children) > 0 {
-		n = n.children[0]
-	}
-	if len(n.items) == 0 {
-		return Item{}
-	}
-	return n.items[0]
-}
-
-// max returns the last item in the subtree.
-func max(n *node) Item {
-	if n == nil {
-		return Item{}
-	}
-	for len(n.children) > 0 {
-		n = n.children[len(n.children)-1]
-	}
-	if len(n.items) == 0 {
-		return Item{}
-	}
-	return n.items[len(n.items)-1]
 }
 
 // toRemove details what item to remove in a node.remove call.
@@ -745,32 +721,57 @@ func (t *BTree) Descend(iterator ItemIterator) {
 	t.root.iterate(descend, nil, nil, false, false, iterator)
 }
 
-// Get returns the value corresponding to key in the tree, or nil if there is no such item.
-// To distinguish a nil value from one that is not present, use Has.
-func (t *BTree) Get(key Key) Value {
-	if t.root == nil {
-		return nil
-	}
-	item, ok := t.root.get(key)
+// Get returns the value corresponding to key in the tree, or the zero value if there is none.
+func (t *BTree) Get(k Key) Value {
+	item, ok := t.root.get(k)
 	if !ok {
-		return nil
+		var z Value
+		return z
 	}
 	return item.Value
 }
 
 // Has returns true if the given key is in the tree.
-func (t *BTree) Has(key Key) bool {
-	return t.Get(key) != nil
+func (t *BTree) Has(k Key) bool {
+	_, ok := t.root.get(k)
+	return ok
 }
 
-// Min returns the smallest item in the tree, or nil if the tree is empty.
-func (t *BTree) Min() Item {
-	return min(t.root)
+// Min returns the smallest key in the tree and its value. If the tree is empty, both
+// return values are zero values.
+func (t *BTree) Min() (Key, Value) {
+	var k Key
+	var v Value
+	if t.root == nil {
+		return k, v
+	}
+	n := t.root
+	for len(n.children) > 0 {
+		n = n.children[0]
+	}
+	if len(n.items) == 0 {
+		return k, v
+	}
+	return n.items[0].Key, n.items[0].Value
 }
 
-// Max returns the largest item in the tree, or nil if the tree is empty.
-func (t *BTree) Max() Item {
-	return max(t.root)
+// Max returns the largest key in the tree and its value. If the tree is empty, both
+// return values are zero values.
+func (t *BTree) Max() (Key, Value) {
+	var k Key
+	var v Value
+	if t.root == nil {
+		return k, v
+	}
+	n := t.root
+	for len(n.children) > 0 {
+		n = n.children[len(n.children)-1]
+	}
+	if len(n.items) == 0 {
+		return k, v
+	}
+	it := n.items[len(n.items)-1]
+	return it.Key, it.Value
 }
 
 // Len returns the number of items currently in the tree.
