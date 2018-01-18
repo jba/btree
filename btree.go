@@ -73,68 +73,22 @@ type Item struct {
 	Value Value
 }
 
-const (
-	DefaultFreeListSize = 32
-)
-
 var (
 	nilItems    = make(items, 16)
 	nilChildren = make(children, 16)
 )
-
-// FreeList represents a free list of btree nodes. By default each
-// BTree has its own FreeList, but multiple BTrees can share the same
-// FreeList.
-// Two Btrees using the same freelist are safe for concurrent write access.
-type FreeList struct {
-	mu       sync.Mutex
-	freelist []*node
-}
-
-// NewFreeList creates a new free list.
-// size is the maximum size of the returned free list.
-func NewFreeList(size int) *FreeList {
-	return &FreeList{freelist: make([]*node, 0, size)}
-}
-
-func (f *FreeList) newNode() (n *node) {
-	f.mu.Lock()
-	index := len(f.freelist) - 1
-	if index < 0 {
-		f.mu.Unlock()
-		return new(node)
-	}
-	n = f.freelist[index]
-	f.freelist[index] = nil
-	f.freelist = f.freelist[:index]
-	f.mu.Unlock()
-	return
-}
-
-func (f *FreeList) freeNode(n *node) {
-	f.mu.Lock()
-	if len(f.freelist) < cap(f.freelist) {
-		f.freelist = append(f.freelist, n)
-	}
-	f.mu.Unlock()
-}
 
 // New creates a new B-Tree with the given degree.
 //
 // New(2), for example, will create a 2-3-4 tree (each node contains 1-3 items
 // and 2-4 children).
 func New(degree int) *BTree {
-	return NewWithFreeList(degree, NewFreeList(DefaultFreeListSize))
-}
-
-// NewWithFreeList creates a new B-Tree that uses the given node free list.
-func NewWithFreeList(degree int, f *FreeList) *BTree {
 	if degree <= 1 {
 		panic("bad degree")
 	}
 	return &BTree{
 		degree: degree,
-		cow:    &copyOnWriteContext{freelist: f},
+		cow:    &copyOnWriteContext{},
 	}
 }
 
@@ -598,9 +552,7 @@ type BTree struct {
 // tree's context, that node is modifiable in place.  Children of that node may
 // not share context, but before we descend into them, we'll make a mutable
 // copy.
-type copyOnWriteContext struct {
-	freelist *FreeList
-}
+type copyOnWriteContext struct{ byte } // non-empty, because empty structs may have same addr
 
 // Clone clones the btree, lazily.  Clone should not be called concurrently,
 // but the original tree (t) and the new tree (t2) can be used concurrently
@@ -637,10 +589,12 @@ func (t *BTree) minItems() int {
 	return t.degree - 1
 }
 
-func (c *copyOnWriteContext) newNode() (n *node) {
-	n = c.freelist.newNode()
+var nodePool = sync.Pool{New: func() interface{} { return new(node) }}
+
+func (c *copyOnWriteContext) newNode() *node {
+	n := nodePool.Get().(*node)
 	n.cow = c
-	return
+	return n
 }
 
 func (c *copyOnWriteContext) freeNode(n *node) {
@@ -649,7 +603,7 @@ func (c *copyOnWriteContext) freeNode(n *node) {
 		n.items.truncate(0)
 		n.children.truncate(0)
 		n.cow = nil
-		c.freelist.freeNode(n)
+		nodePool.Put(n)
 	}
 }
 

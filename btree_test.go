@@ -638,7 +638,6 @@ func BenchmarkAscendRange(b *testing.B) {
 const cloneTestSize = 10000
 
 func cloneTest(t *testing.T, b *BTree, start int, p []Item, wg *sync.WaitGroup, trees *[]*BTree) {
-	t.Logf("Starting new clone at %v", start)
 	*trees = append(*trees, b)
 	for i := start; i < cloneTestSize; i++ {
 		b.ReplaceOrInsert(p[i].Key, p[i].Value)
@@ -659,13 +658,11 @@ func TestCloneConcurrentOperations(t *testing.T) {
 	go cloneTest(t, b, 0, p, &wg, &trees)
 	wg.Wait()
 	want := rang(cloneTestSize)
-	t.Logf("Starting equality checks on %d trees", len(trees))
 	for i, tree := range trees {
 		if !reflect.DeepEqual(want, all(tree)) {
 			t.Errorf("tree %v mismatch", i)
 		}
 	}
-	t.Log("Removing half from first half")
 	toRemove := rang(cloneTestSize)[cloneTestSize/2:]
 	for i := 0; i < len(trees)/2; i++ {
 		tree := trees[i]
@@ -678,7 +675,6 @@ func TestCloneConcurrentOperations(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	t.Log("Checking all values again")
 	for i, tree := range trees {
 		var wantpart []Item
 		if i < len(trees)/2 {
