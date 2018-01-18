@@ -614,22 +614,24 @@ func (t *BTree) Set(key Key, value Value) (old Value, present bool) {
 	return old, present
 }
 
-// Delete removes the item with key, returning it. If no such item exists, returns
+// Delete removes the item with key, returning its value. If no such item exists, returns
 // nil.
-func (t *BTree) Delete(key Key) Item {
-	return t.deleteItem(key, removeItem)
+func (t *BTree) Delete(key Key) Value {
+	return t.deleteItem(key, removeItem).Value
 }
 
-// DeleteMin removes the smallest item in the tree and returns it.
-// If no such item exists, returns nil.
-func (t *BTree) DeleteMin() Item {
-	return t.deleteItem(nil, removeMin)
+// DeleteMin removes the smallest item in the tree and returns the Key and Value.
+// If no such item exists, returns zero values.
+func (t *BTree) DeleteMin() (Key, Value) {
+	item := t.deleteItem(nil, removeMin)
+	return item.Key, item.Value
 }
 
 // DeleteMax removes the largest item in the tree and returns it.
 // If no such item exists, returns nil.
-func (t *BTree) DeleteMax() Item {
-	return t.deleteItem(nil, removeMax)
+func (t *BTree) DeleteMax() (Key, Value) {
+	item := t.deleteItem(nil, removeMax)
+	return item.Key, item.Value
 }
 
 func (t *BTree) deleteItem(key Key, typ toRemove) Item {

@@ -143,23 +143,25 @@ func ExampleBTree() {
 	fmt.Println("set100:    ", old, ok)
 	k, v := tr.Min()
 	fmt.Println("min:       ", k, v)
-	fmt.Println("delmin:    ", tr.DeleteMin())
+	k, v = tr.DeleteMin()
+	fmt.Println("delmin:    ", k, v)
 	k, v = tr.Max()
 	fmt.Println("max:       ", k, v)
-	fmt.Println("delmax:    ", tr.DeleteMax())
+	k, v = tr.DeleteMax()
+	fmt.Println("delmax:    ", k, v)
 	fmt.Println("len:       ", tr.Len())
 	// Output:
 	// len:        10
 	// get3:       3
 	// get100:     <nil>
-	// del4:       {4 4}
-	// del100:     {<nil> <nil>}
+	// del4:       4
+	// del100:     <nil>
 	// set5:       5 true
 	// set100:     <nil> false
 	// min:        0 0
-	// delmin:     {0 0}
+	// delmin:     0 0
 	// max:        100 100
-	// delmax:     {100 100}
+	// delmax:     100 100
 	// len:        8
 }
 
@@ -169,11 +171,12 @@ func TestDeleteMin(t *testing.T) {
 		tr.Set(v.Key, v.Value)
 	}
 	var got []Item
-	for v := tr.DeleteMin(); v != (Item{}); v = tr.DeleteMin() {
-		got = append(got, v)
+	for tr.Len() > 0 {
+		k, v := tr.DeleteMin()
+		got = append(got, Item{k, v})
 	}
 	if want := rang(100); !reflect.DeepEqual(got, want) {
-		t.Fatalf("ascendrange:\n got: %v\nwant: %v", got, want)
+		t.Fatalf("got: %v\nwant: %v", got, want)
 	}
 }
 
@@ -183,15 +186,16 @@ func TestDeleteMax(t *testing.T) {
 		tr.Set(v.Key, v.Value)
 	}
 	var got []Item
-	for v := tr.DeleteMax(); v != (Item{}); v = tr.DeleteMax() {
-		got = append(got, v)
+	for tr.Len() > 0 {
+		k, v := tr.DeleteMax()
+		got = append(got, Item{k, v})
 	}
 	// Reverse our list.
 	for i := 0; i < len(got)/2; i++ {
 		got[i], got[len(got)-i-1] = got[len(got)-i-1], got[i]
 	}
 	if want := rang(100); !reflect.DeepEqual(got, want) {
-		t.Fatalf("ascendrange:\n got: %v\nwant: %v", got, want)
+		t.Fatalf("got: %v\nwant: %v", got, want)
 	}
 }
 
