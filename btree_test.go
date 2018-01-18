@@ -637,13 +637,13 @@ func BenchmarkAscendRange(b *testing.B) {
 
 const cloneTestSize = 10000
 
-func cloneTest(t *testing.T, b *BTree, start int, p []Item, wg *sync.WaitGroup, trees *[]*BTree) {
-	*trees = append(*trees, b)
+func cloneTest(t *testing.T, b *BTree, start int, p []Item, wg *sync.WaitGroup, treec chan<- *BTree) {
+	treec <- b
 	for i := start; i < cloneTestSize; i++ {
 		b.ReplaceOrInsert(p[i].Key, p[i].Value)
 		if i%(cloneTestSize/5) == 0 {
 			wg.Add(1)
-			go cloneTest(t, b.Clone(), i+1, p, wg, trees)
+			go cloneTest(t, b.Clone(), i+1, p, wg, treec)
 		}
 	}
 	wg.Done()
@@ -651,12 +651,22 @@ func cloneTest(t *testing.T, b *BTree, start int, p []Item, wg *sync.WaitGroup, 
 
 func TestCloneConcurrentOperations(t *testing.T) {
 	b := New(*btreeDegree)
-	trees := []*BTree{}
+	treec := make(chan *BTree)
 	p := perm(cloneTestSize)
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go cloneTest(t, b, 0, p, &wg, &trees)
+	go cloneTest(t, b, 0, p, &wg, treec)
+	var trees []*BTree
+	donec := make(chan struct{})
+	go func() {
+		for t := range treec {
+			trees = append(trees, t)
+		}
+		close(donec)
+	}()
 	wg.Wait()
+	close(treec)
+	<-donec
 	want := rang(cloneTestSize)
 	for i, tree := range trees {
 		if !reflect.DeepEqual(want, all(tree)) {
