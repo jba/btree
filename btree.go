@@ -39,12 +39,8 @@
 // heap-allocated structures, since C++-equivalent structures also must store
 // pointers and also distribute their values across the heap.
 //
-// This implementation is designed to be a drop-in replacement to gollrb.LLRB
-// trees, (http://github.com/petar/gollrb), an excellent and probably the most
-// widely used ordered tree implementation in the Go ecosystem currently.
-// Its functions, therefore, exactly mirror those of
-// llrb.LLRB where possible.  Unlike gollrb, though, we currently don't
-// support storing multiple equivalent values.
+// This implementation is based on google/btree (http://github.com/google/btree), and much of
+// the code is taken from there. But the API has been changed significantly.
 package btree
 
 import (
@@ -72,11 +68,6 @@ type Item struct {
 	Key   Key
 	Value Value
 }
-
-var (
-	nilItems    = make(items, 16)
-	nilChildren = make(children, 16)
-)
 
 // New creates a new B-Tree with the given degree.
 //
@@ -123,6 +114,8 @@ func (s *items) pop() Item {
 	*s = (*s)[:index]
 	return out
 }
+
+var nilItems = make(items, 16)
 
 // truncate truncates this instance at index so that it contains only the
 // first index items. index must be less than or equal to length.
@@ -178,6 +171,8 @@ func (s *children) pop() (out *node) {
 	*s = (*s)[:index]
 	return
 }
+
+var nilChildren = make(children, 16)
 
 // truncate truncates this instance at index so that it contains only the
 // first index children. index must be less than or equal to length.
@@ -781,6 +776,18 @@ func (t *BTree) Len() int {
 	return t.length
 }
 
+// func (t *BTree) Before(key Key) *Iterator {
+// 	// Find item at key, or just before.
+
+// }
+
+func (t *BTree) BeforeMin() *Iterator {
+	return &Iterator{
+		cursors: []cursor{{t.root, -1}},
+		Index:   -1,
+	}
+}
+
 // func (t *BTree) After(key Key) *Iterator {
 // 	// Find item at key, or just after.
 // 	item, nodes := t.atOrAfter(key)
@@ -794,33 +801,84 @@ func (t *BTree) Len() int {
 // 	}
 // }
 
-// func (t *BTree) Before(key Key) *Iterator {
-// 	// Find item at key, or just before.
-// }
+// An Iterator supports traversing the items in the tree.
+type Iterator struct {
+	Key   Key
+	Value Value
 
-type nodeWithIndex struct {
+	// Index is the position of the item in the tree viewed as a sequence.
+	// The minimum item has index zero.
+	Index int
+
+	cursors []cursor // stack of nodes with indices; last element is the top
+}
+
+// top returns the top cursor on the stack. It panics if the stack is empty.
+func (it *Iterator) top() cursor {
+	return it.cursors[len(it.cursors)-1]
+}
+
+// When inc returns true, the top cursor on the stack refers to the new current item.
+func (it *Iterator) inc() bool {
+
+	// Useful invariants for understanding this function:
+	// - Leaf nodes have zero children, and zero or more items.
+	// - Nonleaf nodes have one more child than item, and children[i] < items[i] < children[i+1].
+	// - The current item in the iterator is top.node.items[top.index].
+	if len(it.cursors) == 0 {
+		return false
+	}
+	// If we are at a non-leaf node, we just saw items[i], so
+	// now we want to continue with children[i+1], which must exist
+	// by the node invariant. We want the minimum item in that child's subtree.
+	it.cursors[len(it.cursors)-1].index++
+	top := it.top()
+	for len(top.node.children) > 0 {
+		top = cursor{top.node.children[top.index], 0}
+		it.cursors = append(it.cursors, top)
+	}
+	// Here, we are at a leaf node, with only items. top.index points to
+	// the new current item, if it's within the items slice.
+	for top.index == len(top.node.items) {
+		// We've gone through everything in this node. Pop it off the stack.
+		it.cursors = it.cursors[:len(it.cursors)-1]
+		// If the stack is now empty,we're past the last item in the tree.
+		if len(it.cursors) == 0 {
+			return false
+		}
+		top = it.top()
+		// The new top's index points to a child, which we've just finished
+		// exploring. The next item is the one at the same index in the items slice.
+	}
+	// Here, the top cursor on the stack refers to the next item.
+	return true
+}
+
+// A cursor is effectively a pointer into a node. A stack of cursors identifies an item in the tree,
+// and makes it possible to move to the next or previous item efficiently.
+//
+// If the cursor is on the top of the stack, its index points into the node's items slice, selecting
+// the current item. Otherwise, the index points into the children slice and identifies the child
+// that is next in the stack.
+type cursor struct {
 	node  *node
 	index int
 }
 
-// type Iterator struct {
-// 	Key   Key
-// 	Value interface{}
-
-// 	nodes []*nodeWithIndex // stack of nodes with indices
-// }
-
-// Next returns the item immediately following i, or nil if there is none.
-// func (c *Iterator) Next() bool {
-// 	if c == nil {
-// 		return false
-// 	}
-// 	if len(c.nodes) == 0 {
-// 		return nil
-// 	}
-// 	ni := c.nodes[len(c.nodes)-1]
-
-// }
+// Next advances the Iterator to the next item in the tree. If Next returns true,
+// the Iterator's Key, Value and Index fields refer to the next item. If Next returns
+// false, there are no more items and the values of Key, Value and Index are undefined.
+func (it *Iterator) Next() bool {
+	if !it.inc() {
+		return false
+	}
+	top := it.top()
+	item := top.node.items[top.index]
+	it.Key = item.Key
+	it.Value = item.Value
+	it.Index++
+	return true
+}
 
 // // Prev returns the item immediately preceding i, or nil if there is none.
 // func (c *Iterator) Prev() *Iterator {

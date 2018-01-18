@@ -199,6 +199,27 @@ func TestDeleteMax(t *testing.T) {
 	}
 }
 
+func TestIterator(t *testing.T) {
+	tr := New(2)
+	for _, v := range perm(100) {
+		tr.Set(v.Key, v.Value)
+	}
+	it := tr.BeforeMin()
+	want := rang(100)
+	var got []Item
+	i := 0
+	for it.Next() {
+		got = append(got, Item{it.Key, it.Value})
+		if it.Index != i {
+			t.Fatalf("want index %d, got %d", i, it.Index)
+		}
+		i++
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v\nwant %+v\n", got, want)
+	}
+}
+
 func TestAscendRange(t *testing.T) {
 	tr := New(2)
 	for _, v := range perm(100) {
