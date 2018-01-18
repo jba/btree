@@ -258,16 +258,16 @@ func (n *node) maybeSplitChild(i, maxItems int) bool {
 // insert inserts an item into the subtree rooted at this node, making sure
 // no nodes in the subtree exceed maxItems items.  Should an equivalent item be
 // be found/replaced by insert, it will be returned.
-func (n *node) insert(item Item, maxItems int) Item {
+func (n *node) insert(item Item, maxItems int) (old Value, present bool) {
 	i, found := n.items.find(item.Key)
 	if found {
 		out := n.items[i]
 		n.items[i] = item
-		return out
+		return out.Value, true
 	}
 	if len(n.children) == 0 {
 		n.items.insertAt(i, item)
-		return Item{}
+		return old, false
 	}
 	if n.maybeSplitChild(i, maxItems) {
 		inTree := n.items[i]
@@ -279,7 +279,7 @@ func (n *node) insert(item Item, maxItems int) Item {
 		default:
 			out := n.items[i]
 			n.items[i] = item
-			return out
+			return out.Value, true
 		}
 	}
 	return n.mutableChild(i).insert(item, maxItems)
@@ -607,12 +607,12 @@ func (c *copyOnWriteContext) freeNode(n *node) {
 	}
 }
 
-// ReplaceOrInsert adds the given key to the tree with value. If an item in the tree
-// already equals the given one, it is removed from the tree and returned. Otherwise,
-// nil is returned.
-//
-// nil cannot be added to the tree (will panic).
-func (t *BTree) ReplaceOrInsert(key Key, value Value) Item {
+// Set sets the given key to the given value in the tree. The key must not be nil.
+// If the key does not exist, it is added and the second return value is false. If
+// the key exists in the tree, its value is replace and the old value is returned
+// and the second return value is true.
+
+func (t *BTree) Set(key Key, value Value) (old Value, present bool) {
 	if key == nil {
 		panic("btree: nil key")
 	}
@@ -620,7 +620,7 @@ func (t *BTree) ReplaceOrInsert(key Key, value Value) Item {
 		t.root = t.cow.newNode()
 		t.root.items = append(t.root.items, Item{key, value})
 		t.length++
-		return Item{}
+		return old, false
 	} else {
 		t.root = t.root.mutableFor(t.cow)
 		if len(t.root.items) >= t.maxItems() {
@@ -631,11 +631,11 @@ func (t *BTree) ReplaceOrInsert(key Key, value Value) Item {
 			t.root.children = append(t.root.children, oldroot, second)
 		}
 	}
-	out := t.root.insert(Item{key, value}, t.maxItems())
-	if out == (Item{}) {
+	old, present = t.root.insert(Item{key, value}, t.maxItems())
+	if !present {
 		t.length++
 	}
-	return out
+	return old, present
 }
 
 // Delete removes the item with key, returning it. If no such item exists, returns

@@ -87,12 +87,12 @@ func TestBTree(t *testing.T) {
 			t.Fatalf("empty max, got %+v", max)
 		}
 		for _, item := range perm(treeSize) {
-			if x := tr.ReplaceOrInsert(item.Key, item.Value); x != (Item{}) {
+			if _, ok := tr.Set(item.Key, item.Value); ok {
 				t.Fatal("insert found item", item)
 			}
 		}
 		for _, item := range perm(treeSize) {
-			if x := tr.ReplaceOrInsert(item.Key, item.Value); x == (Item{}) {
+			if _, ok := tr.Set(item.Key, item.Value); !ok {
 				t.Fatal("insert didn't find item", item)
 			}
 		}
@@ -127,16 +127,18 @@ func TestBTree(t *testing.T) {
 
 func ExampleBTree() {
 	tr := New(*btreeDegree)
-	for i := Int(0); i < 10; i++ {
-		tr.ReplaceOrInsert(i, i)
+	for i := 0; i < 10; i++ {
+		tr.Set(Int(i), i)
 	}
 	fmt.Println("len:       ", tr.Len())
 	fmt.Println("get3:      ", tr.Get(Int(3)))
 	fmt.Println("get100:    ", tr.Get(Int(100)))
 	fmt.Println("del4:      ", tr.Delete(Int(4)))
 	fmt.Println("del100:    ", tr.Delete(Int(100)))
-	fmt.Println("replace5:  ", tr.ReplaceOrInsert(Int(5), Int(5)))
-	fmt.Println("replace100:", tr.ReplaceOrInsert(Int(100), Int(100)))
+	old, ok := tr.Set(Int(5), 11)
+	fmt.Println("set5:      ", old, ok)
+	old, ok = tr.Set(Int(100), 100)
+	fmt.Println("set100:    ", old, ok)
 	fmt.Println("min:       ", tr.Min())
 	fmt.Println("delmin:    ", tr.DeleteMin())
 	fmt.Println("max:       ", tr.Max())
@@ -148,8 +150,8 @@ func ExampleBTree() {
 	// get100:     <nil>
 	// del4:       {4 4}
 	// del100:     {<nil> <nil>}
-	// replace5:   {5 5}
-	// replace100: {<nil> <nil>}
+	// set5:       5 true
+	// set100:     <nil> false
 	// min:        {0 0}
 	// delmin:     {0 0}
 	// max:        {100 100}
@@ -160,7 +162,7 @@ func ExampleBTree() {
 func TestDeleteMin(t *testing.T) {
 	tr := New(3)
 	for _, v := range perm(100) {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	var got []Item
 	for v := tr.DeleteMin(); v != (Item{}); v = tr.DeleteMin() {
@@ -174,7 +176,7 @@ func TestDeleteMin(t *testing.T) {
 func TestDeleteMax(t *testing.T) {
 	tr := New(3)
 	for _, v := range perm(100) {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	var got []Item
 	for v := tr.DeleteMax(); v != (Item{}); v = tr.DeleteMax() {
@@ -192,7 +194,7 @@ func TestDeleteMax(t *testing.T) {
 func TestAscendRange(t *testing.T) {
 	tr := New(2)
 	for _, v := range perm(100) {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	var got []Item
 	tr.AscendRange(Int(40), Int(60), func(a Item) bool {
@@ -218,7 +220,7 @@ func TestAscendRange(t *testing.T) {
 func TestDescendRange(t *testing.T) {
 	tr := New(2)
 	for _, v := range perm(100) {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	var got []Item
 	tr.DescendRange(Int(60), Int(40), func(a Item) bool {
@@ -243,7 +245,7 @@ func TestDescendRange(t *testing.T) {
 func TestAscendLessThan(t *testing.T) {
 	tr := New(*btreeDegree)
 	for _, v := range perm(100) {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	var got []Item
 	tr.AscendLessThan(Int(60), func(a Item) bool {
@@ -269,7 +271,7 @@ func TestAscendLessThan(t *testing.T) {
 func TestDescendLessOrEqual(t *testing.T) {
 	tr := New(*btreeDegree)
 	for _, v := range perm(100) {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	var got []Item
 	tr.DescendLessOrEqual(Int(40), func(a Item) bool {
@@ -294,7 +296,7 @@ func TestDescendLessOrEqual(t *testing.T) {
 func TestAscendGreaterOrEqual(t *testing.T) {
 	tr := New(*btreeDegree)
 	for _, v := range perm(100) {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	var got []Item
 	tr.AscendGreaterOrEqual(Int(40), func(a Item) bool {
@@ -320,7 +322,7 @@ func TestAscendGreaterOrEqual(t *testing.T) {
 func TestDescendGreaterThan(t *testing.T) {
 	tr := New(*btreeDegree)
 	for _, v := range perm(100) {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	var got []Item
 	tr.DescendGreaterThan(Int(40), func(a Item) bool {
@@ -353,7 +355,7 @@ func BenchmarkInsert(b *testing.B) {
 	for i < b.N {
 		tr := New(*btreeDegree)
 		for _, item := range insertP {
-			tr.ReplaceOrInsert(item.Key, item.Value)
+			tr.Set(item.Key, item.Value)
 			i++
 			if i >= b.N {
 				return
@@ -367,13 +369,13 @@ func BenchmarkDeleteInsert(b *testing.B) {
 	insertP := perm(benchmarkTreeSize)
 	tr := New(*btreeDegree)
 	for _, item := range insertP {
-		tr.ReplaceOrInsert(item.Key, item.Value)
+		tr.Set(item.Key, item.Value)
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		item := insertP[i%benchmarkTreeSize]
 		tr.Delete(item.Key)
-		tr.ReplaceOrInsert(item.Key, item.Value)
+		tr.Set(item.Key, item.Value)
 	}
 }
 
@@ -382,14 +384,14 @@ func BenchmarkDeleteInsertCloneOnce(b *testing.B) {
 	insertP := perm(benchmarkTreeSize)
 	tr := New(*btreeDegree)
 	for _, item := range insertP {
-		tr.ReplaceOrInsert(item.Key, item.Value)
+		tr.Set(item.Key, item.Value)
 	}
 	tr = tr.Clone()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		item := insertP[i%benchmarkTreeSize]
 		tr.Delete(item.Key)
-		tr.ReplaceOrInsert(item.Key, item.Value)
+		tr.Set(item.Key, item.Value)
 	}
 }
 
@@ -398,14 +400,14 @@ func BenchmarkDeleteInsertCloneEachTime(b *testing.B) {
 	insertP := perm(benchmarkTreeSize)
 	tr := New(*btreeDegree)
 	for _, item := range insertP {
-		tr.ReplaceOrInsert(item.Key, item.Value)
+		tr.Set(item.Key, item.Value)
 	}
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		tr = tr.Clone()
 		item := insertP[i%benchmarkTreeSize]
 		tr.Delete(item.Key)
-		tr.ReplaceOrInsert(item.Key, item.Value)
+		tr.Set(item.Key, item.Value)
 	}
 }
 
@@ -419,7 +421,7 @@ func BenchmarkDelete(b *testing.B) {
 		b.StopTimer()
 		tr := New(*btreeDegree)
 		for _, v := range insertP {
-			tr.ReplaceOrInsert(v.Key, v.Value)
+			tr.Set(v.Key, v.Value)
 		}
 		b.StartTimer()
 		for _, item := range removeP {
@@ -445,7 +447,7 @@ func BenchmarkGet(b *testing.B) {
 		b.StopTimer()
 		tr := New(*btreeDegree)
 		for _, v := range insertP {
-			tr.ReplaceOrInsert(v.Key, v.Value)
+			tr.Set(v.Key, v.Value)
 		}
 		b.StartTimer()
 		for _, item := range removeP {
@@ -468,7 +470,7 @@ func BenchmarkGetCloneEachTime(b *testing.B) {
 		b.StopTimer()
 		tr := New(*btreeDegree)
 		for _, v := range insertP {
-			tr.ReplaceOrInsert(v.Key, v.Value)
+			tr.Set(v.Key, v.Value)
 		}
 		b.StartTimer()
 		for _, item := range removeP {
@@ -500,7 +502,7 @@ func BenchmarkAscend(b *testing.B) {
 	arr := perm(benchmarkTreeSize)
 	tr := New(*btreeDegree)
 	for _, v := range arr {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	sort.Sort(byInts(arr))
 	b.ResetTimer()
@@ -520,7 +522,7 @@ func BenchmarkDescend(b *testing.B) {
 	arr := perm(benchmarkTreeSize)
 	tr := New(*btreeDegree)
 	for _, v := range arr {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	sort.Sort(byInts(arr))
 	b.ResetTimer()
@@ -539,7 +541,7 @@ func BenchmarkAscendRange(b *testing.B) {
 	arr := perm(benchmarkTreeSize)
 	tr := New(*btreeDegree)
 	for _, v := range arr {
-		tr.ReplaceOrInsert(v.Key, v.Value)
+		tr.Set(v.Key, v.Value)
 	}
 	sort.Sort(byInts(arr))
 	b.ResetTimer()
@@ -562,7 +564,7 @@ func BenchmarkAscendRange(b *testing.B) {
 // 	arr := perm(benchmarkTreeSize)
 // 	tr := New(*btreeDegree)
 // 	for _, v := range arr {
-// 		tr.ReplaceOrInsert(v.Key, v.Value)
+// 		tr.Set(v.Key, v.Value)
 // 	}
 // 	sort.Sort(byInts(arr))
 // 	b.ResetTimer()
@@ -584,7 +586,7 @@ func BenchmarkAscendRange(b *testing.B) {
 // 	arr := perm(benchmarkTreeSize)
 // 	tr := New(*btreeDegree)
 // 	for _, v := range arr {
-// 		tr.ReplaceOrInsert(v)
+// 		tr.Set(v)
 // 	}
 // 	sort.Sort(byInts(arr))
 // 	b.ResetTimer()
@@ -611,7 +613,7 @@ func BenchmarkAscendRange(b *testing.B) {
 // 	arr := perm(benchmarkTreeSize)
 // 	tr := New(*btreeDegree)
 // 	for _, v := range arr {
-// 		tr.ReplaceOrInsert(v)
+// 		tr.Set(v)
 // 	}
 // 	sort.Sort(byInts(arr))
 // 	b.ResetTimer()
@@ -640,7 +642,7 @@ const cloneTestSize = 10000
 func cloneTest(t *testing.T, b *BTree, start int, p []Item, wg *sync.WaitGroup, treec chan<- *BTree) {
 	treec <- b
 	for i := start; i < cloneTestSize; i++ {
-		b.ReplaceOrInsert(p[i].Key, p[i].Value)
+		b.Set(p[i].Key, p[i].Value)
 		if i%(cloneTestSize/5) == 0 {
 			wg.Add(1)
 			go cloneTest(t, b.Clone(), i+1, p, wg, treec)
