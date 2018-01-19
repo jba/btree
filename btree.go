@@ -292,16 +292,16 @@ func (n *node) get(k Key) (item, bool) {
 
 // cursorStackFor returns a stack of cursors for the key. The second return value reports
 // whether the key was found.
-func (n *node) cursorStackFor(k Key, cstack cursorStack) (cursorStack, bool) {
+func (n *node) cursorStackFor(k Key, cs cursorStack) (cursorStack, bool) {
 	i, found := n.items.find(k)
-	cstack.push(cursor{n, i})
+	cs.push(cursor{n, i})
 	if found {
-		return cstack, true
+		return cs, true
 	}
 	if len(n.children) > 0 {
-		return n.children[i].cursorStackFor(k, cstack)
+		return n.children[i].cursorStackFor(k, cs)
 	}
-	return cstack, false
+	return cs, false
 }
 
 // toRemove details what item to remove in a node.remove call.
@@ -432,8 +432,8 @@ type BTree struct {
 	cow    *copyOnWriteContext
 }
 
-// copyOnWriteContext pointers determine node ownership... a tree with a write
-// context equivalent to a node's write context is allowed to modify that node.
+// copyOnWriteContext pointers determine node ownership. A tree with a cow
+// context equivalent to a node's cow context is allowed to modify that node.
 // A tree whose write context does not match a node's is not allowed to modify
 // it, and must create a new, writable copy (IE: it's a Clone).
 //
@@ -538,15 +538,15 @@ func (t *BTree) Delete(key Key) Value {
 	return t.deleteItem(key, removeItem).value
 }
 
-// DeleteMin removes the smallest item in the tree and returns the Key and Value.
-// If no such item exists, returns zero values.
+// DeleteMin removes the smallest item in the tree and returns its key and value.
+// If the tree is empty, it returns zero values.
 func (t *BTree) DeleteMin() (Key, Value) {
 	item := t.deleteItem(nil, removeMin)
 	return item.key, item.value
 }
 
-// DeleteMax removes the largest item in the tree and returns it.
-// If no such item exists, returns nil.
+// DeleteMax removes the largest item in the tree and returns its key and value.
+// If the tree is empty, it returns zero values.
 func (t *BTree) DeleteMax() (Key, Value) {
 	item := t.deleteItem(nil, removeMax)
 	return item.key, item.value
@@ -569,7 +569,8 @@ func (t *BTree) deleteItem(key Key, typ toRemove) item {
 	return out
 }
 
-// Get returns the value corresponding to key in the tree, or the zero value if there is none.
+// Get returns the value corresponding to key in the tree, or the zero value if the
+// key is not in the tree.
 func (t *BTree) Get(k Key) Value {
 	var z Value
 	if t.root == nil {
@@ -582,7 +583,7 @@ func (t *BTree) Get(k Key) Value {
 	return item.value
 }
 
-// Has returns true if the given key is in the tree.
+// Has reports whether the given key is in the tree.
 func (t *BTree) Has(k Key) bool {
 	if t.root == nil {
 		return false
@@ -699,31 +700,31 @@ type Iterator struct {
 	descending bool        // traverse the items in descending order
 }
 
-type cursorStack []cursor
-
-func (s *cursorStack) push(c cursor) {
-	*s = append(*s, c)
-}
-
-func (s *cursorStack) pop() cursor {
-	last := len(*s) - 1
-	t := (*s)[last]
-	*s = (*s)[:last]
-	return t
-}
-
-func (s *cursorStack) top() cursor {
-	return (*s)[len(*s)-1]
-}
-
-func (s *cursorStack) empty() bool {
-	return len(*s) == 0
-}
-
-// incTop increments top's index by n and returns it.
-func (s *cursorStack) incTop(n int) cursor {
-	(*s)[len(*s)-1].index += n // Don't call top: modify the original, not a copy.
-	return s.top()
+// Next advances the Iterator to the next item in the tree. If Next returns true,
+// the Iterator's Key, Value and Index fields refer to the next item. If Next returns
+// false, there are no more items and the values of Key, Value and Index are undefined.
+func (it *Iterator) Next() (b bool) {
+	var more bool
+	switch {
+	case len(it.cursors) == 0:
+		more = false
+	case it.stay:
+		it.stay = false
+		more = true
+	case it.descending:
+		more = it.dec()
+	default:
+		more = it.inc()
+	}
+	if !more {
+		return false
+	}
+	top := it.cursors[len(it.cursors)-1]
+	item := top.node.items[top.index]
+	it.Key = item.key
+	it.Value = item.value
+	it.Index++
+	return true
 }
 
 // When inc returns true, the top cursor on the stack refers to the new current item.
@@ -797,29 +798,30 @@ type cursor struct {
 	index int
 }
 
-// Next advances the Iterator to the next item in the tree. If Next returns true,
-// the Iterator's Key, Value and Index fields refer to the next item. If Next returns
-// false, there are no more items and the values of Key, Value and Index are undefined.
-func (it *Iterator) Next() (b bool) {
-	var more bool
-	switch {
-	case len(it.cursors) == 0:
-		more = false
-	case it.stay:
-		it.stay = false
-		more = true
-	case it.descending:
-		more = it.dec()
-	default:
-		more = it.inc()
-	}
-	if !more {
-		return false
-	}
-	top := it.cursors[len(it.cursors)-1]
-	item := top.node.items[top.index]
-	it.Key = item.key
-	it.Value = item.value
-	it.Index++
-	return true
+// A cursorStack is a stack of cursors, representing a path of nodes from the root of the tree.
+type cursorStack []cursor
+
+func (s *cursorStack) push(c cursor) {
+	*s = append(*s, c)
+}
+
+func (s *cursorStack) pop() cursor {
+	last := len(*s) - 1
+	t := (*s)[last]
+	*s = (*s)[:last]
+	return t
+}
+
+func (s *cursorStack) top() cursor {
+	return (*s)[len(*s)-1]
+}
+
+func (s *cursorStack) empty() bool {
+	return len(*s) == 0
+}
+
+// incTop increments top's index by n and returns it.
+func (s *cursorStack) incTop(n int) cursor {
+	(*s)[len(*s)-1].index += n // Don't call top: modify the original, not a copy.
+	return s.top()
 }
