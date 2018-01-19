@@ -73,6 +73,12 @@ func allrev(t *BTree) (out []Item) {
 	return
 }
 
+func reverse(s []Item) {
+	for i := 0; i < len(s)/2; i++ {
+		s[i], s[len(s)-i-1] = s[len(s)-i-1], s[i]
+	}
+}
+
 var btreeDegree = flag.Int("degree", 32, "B-Tree degree")
 
 func TestBTree(t *testing.T) {
@@ -189,33 +195,50 @@ func TestDeleteMax(t *testing.T) {
 		k, v := tr.DeleteMax()
 		got = append(got, Item{k, v})
 	}
-	// Reverse our list.
-	for i := 0; i < len(got)/2; i++ {
-		got[i], got[len(got)-i-1] = got[len(got)-i-1], got[i]
-	}
+	reverse(got)
 	if want := rang(100); !reflect.DeepEqual(got, want) {
 		t.Fatalf("got: %v\nwant: %v", got, want)
 	}
 }
 
 func TestIterator(t *testing.T) {
-	const size = 10
+	const size = 100
+
 	tr := New(2)
-	// Test empty tree.
-	it := tr.BeforeMin()
-	if got, want := it.Next(), false; got != want {
-		t.Errorf("empty: got %t, want %t", got, want)
-	}
-	it = tr.Before(Int(3))
-	if got, want := it.Next(), false; got != want {
-		t.Errorf("empty: got %t, want %t", got, want)
+	// Empty tree.
+	for i, it := range []*Iterator{
+		tr.BeforeMin(),
+		tr.Before(Int(3)),
+		tr.After(Int(3)),
+	} {
+		if got, want := it.Next(), false; got != want {
+			t.Errorf("empty, #%d: got %t, want %t", i, got, want)
+		}
 	}
 
+	// Root with zero children.
+	tr.Set(Int(1), nil)
+	tr.Delete(Int(1))
+	if !(tr.root != nil && len(tr.root.children) == 0 && len(tr.root.items) == 0) {
+		t.Fatal("wrong shape tree")
+	}
+	for i, it := range []*Iterator{
+		tr.BeforeMin(),
+		tr.Before(Int(3)),
+		tr.After(Int(3)),
+	} {
+		if got, want := it.Next(), false; got != want {
+			t.Errorf("zero root, #%d: got %t, want %t", i, got, want)
+		}
+	}
+
+	// Tree with size elements.
 	p := perm(size)
 	for _, v := range p {
 		tr.Set(v.Key, v.Value)
 	}
-	it = tr.BeforeMin()
+
+	it := tr.BeforeMin()
 	got := all(it)
 	want := rang(size)
 	// TODO: text Index
@@ -231,6 +254,14 @@ func TestIterator(t *testing.T) {
 		if !reflect.DeepEqual(got, wn) {
 			t.Fatalf("got %+v\nwant %+v\n", got, wn)
 		}
+
+		it = tr.After(w.Key)
+		got = all(it)
+		wn = append([]Item(nil), want[:w.Key.(Int)+1]...)
+		reverse(wn)
+		if !reflect.DeepEqual(got, wn) {
+			t.Fatalf("got %+v\nwant %+v\n", got, wn)
+		}
 	}
 
 	// Non-existent keys.
@@ -238,11 +269,22 @@ func TestIterator(t *testing.T) {
 	for _, v := range p {
 		tr.Set(Int(v.Key.(Int)*2), v.Value)
 	}
+	// tr has only even keys: 0, 2, 4, ... Iterate from odd keys.
 	for i := -1; i <= size+1; i += 2 {
 		it := tr.Before(Int(i))
 		got := all(it)
 		var want []Item
 		for j := (i + 1) / 2; j < size; j++ {
+			want = append(want, Item{Int(j) * 2, Int(j)})
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("%d: got %+v\nwant %+v\n", i, got, want)
+		}
+
+		it = tr.After(Int(i))
+		got = all(it)
+		want = nil
+		for j := (i - 1) / 2; j >= 0; j-- {
 			want = append(want, Item{Int(j) * 2, Int(j)})
 		}
 		if !reflect.DeepEqual(got, want) {
