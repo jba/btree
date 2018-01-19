@@ -48,12 +48,11 @@ func rang(n int) (out []Item) {
 	return
 }
 
-// all extracts all items from a tree in order as a slice.
-func all(t *BTree) (out []Item) {
-	t.Ascend(func(a Item) bool {
-		out = append(out, a)
-		return true
-	})
+// all extracts all items from an iterator.
+func all(it *Iterator) (out []Item) {
+	for it.Next() {
+		out = append(out, Item{it.Key, it.Value})
+	}
 	return
 }
 
@@ -104,7 +103,7 @@ func TestBTree(t *testing.T) {
 		if want := Int(treeSize - 1); maxk != want || maxv != want {
 			t.Fatalf("max: want %+v, got %+v, %+v", want, maxk, maxv)
 		}
-		got := all(tr)
+		got := all(tr.BeforeMin())
 		want := rang(treeSize)
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("mismatch:\n got: %v\nwant: %v", got, want)
@@ -121,7 +120,7 @@ func TestBTree(t *testing.T) {
 				t.Fatalf("didn't find %v", item)
 			}
 		}
-		if got = all(tr); len(got) > 0 {
+		if got = all(tr.BeforeMin()); len(got) > 0 {
 			t.Fatalf("some left!: %v", got)
 		}
 	}
@@ -200,23 +199,55 @@ func TestDeleteMax(t *testing.T) {
 }
 
 func TestIterator(t *testing.T) {
+	const size = 10
 	tr := New(2)
-	for _, v := range perm(100) {
+	// Test empty tree.
+	it := tr.BeforeMin()
+	if got, want := it.Next(), false; got != want {
+		t.Errorf("empty: got %t, want %t", got, want)
+	}
+	it = tr.Before(Int(3))
+	if got, want := it.Next(), false; got != want {
+		t.Errorf("empty: got %t, want %t", got, want)
+	}
+
+	p := perm(size)
+	for _, v := range p {
 		tr.Set(v.Key, v.Value)
 	}
-	it := tr.BeforeMin()
-	want := rang(100)
-	var got []Item
-	i := 0
-	for it.Next() {
-		got = append(got, Item{it.Key, it.Value})
-		if it.Index != i {
-			t.Fatalf("want index %d, got %d", i, it.Index)
-		}
-		i++
-	}
+	it = tr.BeforeMin()
+	got := all(it)
+	want := rang(size)
+	// TODO: text Index
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v\nwant %+v\n", got, want)
+	}
+
+	for _, w := range want {
+		it := tr.Before(w.Key)
+		got = all(it)
+		// TODO: test it.Index
+		wn := want[w.Key.(Int):]
+		if !reflect.DeepEqual(got, wn) {
+			t.Fatalf("got %+v\nwant %+v\n", got, wn)
+		}
+	}
+
+	// Non-existent keys.
+	tr = New(2)
+	for _, v := range p {
+		tr.Set(Int(v.Key.(Int)*2), v.Value)
+	}
+	for i := -1; i <= size+1; i += 2 {
+		it := tr.Before(Int(i))
+		got := all(it)
+		var want []Item
+		for j := (i + 1) / 2; j < size; j++ {
+			want = append(want, Item{Int(j) * 2, Int(j)})
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("%d: got %+v\nwant %+v\n", i, got, want)
+		}
 	}
 }
 
@@ -700,7 +731,7 @@ func TestCloneConcurrentOperations(t *testing.T) {
 	<-donec
 	want := rang(cloneTestSize)
 	for i, tree := range trees {
-		if !reflect.DeepEqual(want, all(tree)) {
+		if !reflect.DeepEqual(want, all(tree.BeforeMin())) {
 			t.Errorf("tree %v mismatch", i)
 		}
 	}
@@ -723,7 +754,7 @@ func TestCloneConcurrentOperations(t *testing.T) {
 		} else {
 			wantpart = want
 		}
-		if got := all(tree); !reflect.DeepEqual(wantpart, got) {
+		if got := all(tree.BeforeMin()); !reflect.DeepEqual(wantpart, got) {
 			t.Errorf("tree %v mismatch, want %v got %v", i, len(want), len(got))
 		}
 	}
