@@ -611,17 +611,14 @@ func (c *copyOnWriteContext) freeNode(n *node) {
 	}
 }
 
-// Set sets the given key to the given value in the tree. The key must not be nil.
-// If the key does not exist, it is added and the second return value is false. If
-// the key exists in the tree, its value is replace and the old value is returned
-// and the second return value is true.
-func (t *BTree) Set(key Key, value Value) (old Value, present bool) {
-	if key == nil {
-		panic("btree: nil key")
-	}
+// Set sets the given key to the given value in the tree. If the key is present in
+// the tree, its value is changed and the old value is returned along with a second
+// return value of true. If the key is not in the tree, it is added, and the second
+// return value is false.
+func (t *BTree) Set(k Key, v Value) (old Value, present bool) {
 	if t.root == nil {
 		t.root = t.cow.newNode()
-		t.root.items = append(t.root.items, item{key, value})
+		t.root.items = append(t.root.items, item{k, v})
 		t.root.size = 1
 		return old, false
 	}
@@ -636,7 +633,7 @@ func (t *BTree) Set(key Key, value Value) (old Value, present bool) {
 		t.root.size = sz
 	}
 
-	return t.root.insert(item{key, value}, t.maxItems())
+	return t.root.insert(item{k, v}, t.maxItems())
 }
 
 // Delete removes the item with the given key, returning its value. The second return value
