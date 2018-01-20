@@ -615,7 +615,6 @@ func (c *copyOnWriteContext) freeNode(n *node) {
 // If the key does not exist, it is added and the second return value is false. If
 // the key exists in the tree, its value is replace and the old value is returned
 // and the second return value is true.
-
 func (t *BTree) Set(key Key, value Value) (old Value, present bool) {
 	if key == nil {
 		panic("btree: nil key")
@@ -642,7 +641,6 @@ func (t *BTree) Set(key Key, value Value) (old Value, present bool) {
 
 // Delete removes the item with the given key, returning its value. The second return value
 // reports whether the key was found.
-
 func (t *BTree) Delete(k Key) (Value, bool) {
 	m, removed := t.deleteItem(k, removeItem)
 	return m.value, removed
