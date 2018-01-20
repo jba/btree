@@ -15,6 +15,11 @@
 
 // Package btree implements in-memory B-Trees of arbitrary degree.
 //
+// This implementation is based on google/btree (http://github.com/google/btree), and
+// much of the code is taken from there. But the API has been changed significantly,
+// particularly around iteration, and support for indexing by position has been
+// added.
+//
 // btree implements an in-memory B-Tree for use as an ordered data structure.
 // It is not meant for persistent storage solutions.
 //
@@ -39,11 +44,6 @@
 // These issues don't tend to matter, though, when working with strings or other
 // heap-allocated structures, since C++-equivalent structures also must store
 // pointers and also distribute their values across the heap.
-//
-// This implementation is based on google/btree (http://github.com/google/btree), and
-// much of the code is taken from there. But the API has been changed significantly,
-// particularly around iteration, and support for indexing by position has been
-// added.
 package btree
 
 import (
