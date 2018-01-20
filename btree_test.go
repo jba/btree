@@ -160,49 +160,6 @@ func TestGetWithIndex(t *testing.T) {
 	}
 }
 
-func ExampleBTree() {
-	tr := New(*btreeDegree)
-	for i := 0; i < 10; i++ {
-		tr.Set(Int(i), i)
-	}
-	fmt.Println("len:       ", tr.Len())
-	fmt.Println("get3:      ", tr.Get(Int(3)))
-	fmt.Println("get100:    ", tr.Get(Int(100)))
-	k, v := tr.At(7)
-	fmt.Println("at7:       ", k, v)
-	d, ok := tr.Delete(Int(4))
-	fmt.Println("del4:      ", d, ok)
-	d, ok = tr.Delete(Int(100))
-	fmt.Println("del100:    ", d, ok)
-	old, ok := tr.Set(Int(5), 11)
-	fmt.Println("set5:      ", old, ok)
-	old, ok = tr.Set(Int(100), 100)
-	fmt.Println("set100:    ", old, ok)
-	k, v = tr.Min()
-	fmt.Println("min:       ", k, v)
-	k, v = tr.DeleteMin()
-	fmt.Println("delmin:    ", k, v)
-	k, v = tr.Max()
-	fmt.Println("max:       ", k, v)
-	k, v = tr.DeleteMax()
-	fmt.Println("delmax:    ", k, v)
-	fmt.Println("len:       ", tr.Len())
-	// Output:
-	// len:        10
-	// get3:       3
-	// get100:     <nil>
-	// at7:        7 7
-	// del4:       4 true
-	// del100:     <nil> false
-	// set5:       5 true
-	// set100:     <nil> false
-	// min:        0 0
-	// delmin:     0 0
-	// max:        100 100
-	// delmax:     100 100
-	// len:        8
-}
-
 func TestDeleteMin(t *testing.T) {
 	tr := New(3)
 	for _, m := range perm(100) {

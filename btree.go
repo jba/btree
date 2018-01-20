@@ -40,8 +40,10 @@
 // heap-allocated structures, since C++-equivalent structures also must store
 // pointers and also distribute their values across the heap.
 //
-// This implementation is based on google/btree (http://github.com/google/btree), and much of
-// the code is taken from there. But the API has been changed significantly.
+// This implementation is based on google/btree (http://github.com/google/btree), and
+// much of the code is taken from there. But the API has been changed significantly,
+// particularly around iteration, and support for indexing by position has been
+// added.
 package btree
 
 import (
@@ -495,9 +497,6 @@ func (n *node) growChildAndRemove(i int, key Key, minItems int, typ toRemove) (i
 			child.children.insertAt(0, c)
 			child.size += c.size
 		}
-		child.checkSize()
-		stealFrom.checkSize()
-		n.checkSize()
 	} else if i < len(n.items) && len(n.children[i+1].items) > minItems {
 		// steal from right child
 		child := n.mutableChild(i)
@@ -513,9 +512,6 @@ func (n *node) growChildAndRemove(i int, key Key, minItems int, typ toRemove) (i
 			child.children = append(child.children, c)
 			child.size += c.size
 		}
-		child.checkSize()
-		stealFrom.checkSize()
-		n.checkSize()
 	} else {
 		if i >= len(n.items) {
 			i--
@@ -677,7 +673,6 @@ func (t *BTree) deleteItem(key Key, typ toRemove) (item, bool) {
 		t.root = t.root.children[0]
 		t.cow.freeNode(oldroot)
 	}
-	t.root.checkSize()
 	return out, removed
 }
 
