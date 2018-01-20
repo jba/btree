@@ -23,8 +23,6 @@ import (
 	"testing"
 )
 
-// TODO: write iterator benchmarks and compare them with the original Ascend/Descend benchmarks.
-
 const benchmarkTreeSize = 10000
 
 var degrees = []int{2, 8, 32, 64}
