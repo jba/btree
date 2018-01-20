@@ -45,6 +45,7 @@
 package btree
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 )
@@ -189,7 +190,23 @@ func (s *children) truncate(index int) {
 type node struct {
 	items    items
 	children children
+	size     int // number of items in the subtree: len(items) + sum over i of children[i].size
 	cow      *copyOnWriteContext
+}
+
+func (n *node) computeSize() int {
+	sz := len(n.items)
+	for _, c := range n.children {
+		sz += c.size
+	}
+	return sz
+}
+
+func (n *node) checkSize() {
+	sz := n.computeSize()
+	if n.size != sz {
+		panic(fmt.Sprintf("n.size = %d, computed size = %d", n.size, sz))
+	}
 }
 
 func (n *node) mutableFor(cow *copyOnWriteContext) *node {
@@ -210,6 +227,7 @@ func (n *node) mutableFor(cow *copyOnWriteContext) *node {
 		out.children = make(children, len(n.children), cap(n.children))
 	}
 	copy(out.children, n.children)
+	out.size = n.size
 	return out
 }
 
@@ -231,6 +249,8 @@ func (n *node) split(i int) (item, *node) {
 		next.children = append(next.children, n.children[i+1:]...)
 		n.children.truncate(i + 1)
 	}
+	n.size = n.computeSize()
+	next.size = next.computeSize()
 	return item, next
 }
 
@@ -244,6 +264,7 @@ func (n *node) maybeSplitChild(i, maxItems int) bool {
 	item, second := first.split(maxItems / 2)
 	n.items.insertAt(i, item)
 	n.children.insertAt(i+1, second)
+	// The size of n doesn't change.
 	return true
 }
 
@@ -259,6 +280,7 @@ func (n *node) insert(m item, maxItems int) (old Value, present bool) {
 	}
 	if len(n.children) == 0 {
 		n.items.insertAt(i, m)
+		n.size++
 		return old, false
 	}
 	if n.maybeSplitChild(i, maxItems) {
@@ -274,7 +296,11 @@ func (n *node) insert(m item, maxItems int) (old Value, present bool) {
 			return out.value, true
 		}
 	}
-	return n.mutableChild(i).insert(m, maxItems)
+	old, present = n.mutableChild(i).insert(m, maxItems)
+	if !present {
+		n.size++
+	}
+	return old, present
 }
 
 // get finds the given key in the subtree and returns the corresponding item, along with a boolean reporting
@@ -304,6 +330,24 @@ func (n *node) cursorStackFor(k Key, cs cursorStack) (cursorStack, bool) {
 	return cs, false
 }
 
+// at returns the item at the i'th position in the subtree rooted at n.
+func (n *node) at(i int) item {
+	if len(n.children) == 0 {
+		return n.items[i]
+	}
+	for j, c := range n.children {
+		if i < c.size {
+			return c.at(i)
+		}
+		i -= c.size
+		if i == 0 {
+			return n.items[j]
+		}
+		i--
+	}
+	panic("impossible")
+}
+
 // toRemove details what item to remove in a node.remove call.
 type toRemove int
 
@@ -314,27 +358,31 @@ const (
 )
 
 // remove removes an item from the subtree rooted at this node.
-func (n *node) remove(key Key, minItems int, typ toRemove) item {
+func (n *node) remove(key Key, minItems int, typ toRemove) (item, bool) {
 	var i int
 	var found bool
 	switch typ {
 	case removeMax:
 		if len(n.children) == 0 {
-			return n.items.pop()
+			n.size--
+			return n.items.pop(), true
+
 		}
 		i = len(n.items)
 	case removeMin:
 		if len(n.children) == 0 {
-			return n.items.removeAt(0)
+			n.size--
+			return n.items.removeAt(0), true
 		}
 		i = 0
 	case removeItem:
 		i, found = n.items.find(key)
 		if len(n.children) == 0 {
 			if found {
-				return n.items.removeAt(i)
+				n.size--
+				return n.items.removeAt(i), true
 			}
-			return item{}
+			return item{}, false
 		}
 	default:
 		panic("invalid type")
@@ -354,12 +402,17 @@ func (n *node) remove(key Key, minItems int, typ toRemove) item {
 		// We use our special-case 'remove' call with typ=maxItem to pull the
 		// predecessor of item i (the rightmost leaf of our immediate left child)
 		// and set it into where we pulled the item from.
-		n.items[i] = child.remove(nil, minItems, removeMax)
-		return out
+		n.items[i], _ = child.remove(nil, minItems, removeMax)
+		n.size--
+		return out, true
 	}
 	// Final recursive call.  Once we're here, we know that the item isn't in this
 	// node and that the child is big enough to remove from.
-	return child.remove(key, minItems, typ)
+	m, removed := child.remove(key, minItems, typ)
+	if removed {
+		n.size--
+	}
+	return m, removed
 }
 
 // growChildAndRemove grows child 'i' to make sure it's possible to remove an
@@ -381,27 +434,43 @@ func (n *node) remove(key Key, minItems int, typ toRemove) item {
 // We then simply redo our remove call, and the second time (regardless of
 // whether we're in case 1 or 2), we'll have enough items and can guarantee
 // that we hit case A.
-func (n *node) growChildAndRemove(i int, key Key, minItems int, typ toRemove) item {
+func (n *node) growChildAndRemove(i int, key Key, minItems int, typ toRemove) (item, bool) {
 	if i > 0 && len(n.children[i-1].items) > minItems {
 		// Steal from left child
 		child := n.mutableChild(i)
 		stealFrom := n.mutableChild(i - 1)
 		stolenItem := stealFrom.items.pop()
+		stealFrom.size--
 		child.items.insertAt(0, n.items[i-1])
+		child.size++
 		n.items[i-1] = stolenItem
 		if len(stealFrom.children) > 0 {
-			child.children.insertAt(0, stealFrom.children.pop())
+			c := stealFrom.children.pop()
+			stealFrom.size -= c.size
+			child.children.insertAt(0, c)
+			child.size += c.size
 		}
+		child.checkSize()
+		stealFrom.checkSize()
+		n.checkSize()
 	} else if i < len(n.items) && len(n.children[i+1].items) > minItems {
 		// steal from right child
 		child := n.mutableChild(i)
 		stealFrom := n.mutableChild(i + 1)
 		stolenItem := stealFrom.items.removeAt(0)
+		stealFrom.size--
 		child.items = append(child.items, n.items[i])
+		child.size++
 		n.items[i] = stolenItem
 		if len(stealFrom.children) > 0 {
-			child.children = append(child.children, stealFrom.children.removeAt(0))
+			c := stealFrom.children.removeAt(0)
+			stealFrom.size -= c.size
+			child.children = append(child.children, c)
+			child.size += c.size
 		}
+		child.checkSize()
+		stealFrom.checkSize()
+		n.checkSize()
 	} else {
 		if i >= len(n.items) {
 			i--
@@ -413,6 +482,7 @@ func (n *node) growChildAndRemove(i int, key Key, minItems int, typ toRemove) it
 		child.items = append(child.items, mergeItem)
 		child.items = append(child.items, mergeChild.items...)
 		child.children = append(child.children, mergeChild.children...)
+		child.size = child.computeSize()
 		n.cow.freeNode(mergeChild)
 	}
 	return n.remove(key, minItems, typ)
@@ -427,7 +497,6 @@ func (n *node) growChildAndRemove(i int, key Key, minItems int, typ toRemove) it
 // goroutines, but Read operations are.
 type BTree struct {
 	degree int
-	length int
 	root   *node
 	cow    *copyOnWriteContext
 }
@@ -513,60 +582,58 @@ func (t *BTree) Set(key Key, value Value) (old Value, present bool) {
 	if t.root == nil {
 		t.root = t.cow.newNode()
 		t.root.items = append(t.root.items, item{key, value})
-		t.length++
+		t.root.size = 1
 		return old, false
 	}
 	t.root = t.root.mutableFor(t.cow)
 	if len(t.root.items) >= t.maxItems() {
+		sz := t.root.size
 		item2, second := t.root.split(t.maxItems() / 2)
 		oldroot := t.root
 		t.root = t.cow.newNode()
 		t.root.items = append(t.root.items, item2)
 		t.root.children = append(t.root.children, oldroot, second)
+		t.root.size = sz
 	}
 
-	old, present = t.root.insert(item{key, value}, t.maxItems())
-	if !present {
-		t.length++
-	}
-	return old, present
+	return t.root.insert(item{key, value}, t.maxItems())
 }
 
-// Delete removes the item with key, returning its value. If no such item exists, returns
-// nil.
-func (t *BTree) Delete(key Key) Value {
-	return t.deleteItem(key, removeItem).value
+// Delete removes the item with the given key, returning its value. The second return value
+// reports whether the key was found.
+
+func (t *BTree) Delete(k Key) (Value, bool) {
+	m, removed := t.deleteItem(k, removeItem)
+	return m.value, removed
 }
 
 // DeleteMin removes the smallest item in the tree and returns its key and value.
 // If the tree is empty, it returns zero values.
 func (t *BTree) DeleteMin() (Key, Value) {
-	item := t.deleteItem(nil, removeMin)
+	item, _ := t.deleteItem(nil, removeMin)
 	return item.key, item.value
 }
 
 // DeleteMax removes the largest item in the tree and returns its key and value.
 // If the tree is empty, it returns zero values.
 func (t *BTree) DeleteMax() (Key, Value) {
-	item := t.deleteItem(nil, removeMax)
+	item, _ := t.deleteItem(nil, removeMax)
 	return item.key, item.value
 }
 
-func (t *BTree) deleteItem(key Key, typ toRemove) item {
+func (t *BTree) deleteItem(key Key, typ toRemove) (item, bool) {
 	if t.root == nil || len(t.root.items) == 0 {
-		return item{}
+		return item{}, false
 	}
 	t.root = t.root.mutableFor(t.cow)
-	out := t.root.remove(key, t.minItems(), typ)
+	out, removed := t.root.remove(key, t.minItems(), typ)
 	if len(t.root.items) == 0 && len(t.root.children) > 0 {
 		oldroot := t.root
 		t.root = t.root.children[0]
 		t.cow.freeNode(oldroot)
 	}
-	if out != (item{}) {
-		t.length--
-	}
-	return out
+	t.root.checkSize()
+	return out, removed
 }
 
 // Get returns the value corresponding to key in the tree, or the zero value if the
@@ -583,6 +650,16 @@ func (t *BTree) Get(k Key) Value {
 	return item.value
 }
 
+// At returns the key and value at index i. The minimum item has index 0.
+// If i is outside the range [0, t.Len()), At panics.
+func (t *BTree) At(i int) (Key, Value) {
+	if i < 0 || i >= t.Len() {
+		panic("btree: index out of range")
+	}
+	item := t.root.at(i)
+	return item.key, item.value
+}
+
 // Has reports whether the given key is in the tree.
 func (t *BTree) Has(k Key) bool {
 	if t.root == nil {
@@ -592,8 +669,8 @@ func (t *BTree) Has(k Key) bool {
 	return ok
 }
 
-// Min returns the smallest key in the tree and its value. If the tree is empty, both
-// return values are zero values.
+// Min returns the smallest key in the tree and its value. If the tree is empty, it
+// returns zero values.
 func (t *BTree) Min() (Key, Value) {
 	var k Key
 	var v Value
@@ -631,7 +708,10 @@ func (t *BTree) Max() (Key, Value) {
 
 // Len returns the number of items currently in the tree.
 func (t *BTree) Len() int {
-	return t.length
+	if t.root == nil {
+		return 0
+	}
+	return t.root.size
 }
 
 // Before returns an iterator positioned just before k. After the first call to Next,
@@ -690,7 +770,6 @@ func (t *BTree) BeforeMin() *Iterator {
 type Iterator struct {
 	Key   Key
 	Value Value
-
 	// Index is the position of the item in the tree viewed as a sequence.
 	// The minimum item has index zero.
 	Index int
@@ -703,6 +782,8 @@ type Iterator struct {
 // Next advances the Iterator to the next item in the tree. If Next returns true,
 // the Iterator's Key, Value and Index fields refer to the next item. If Next returns
 // false, there are no more items and the values of Key, Value and Index are undefined.
+//
+// If the tree is modified during iteration, the behavior is undefined.
 func (it *Iterator) Next() (b bool) {
 	var more bool
 	switch {

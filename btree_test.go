@@ -83,12 +83,12 @@ func TestBTree(t *testing.T) {
 		}
 		for _, m := range perm(treeSize) {
 			if _, ok := tr.Set(m.key, m.value); ok {
-				t.Fatal("insert found item", m)
+				t.Fatal("set found item", m)
 			}
 		}
 		for _, m := range perm(treeSize) {
 			if _, ok := tr.Set(m.key, m.value); !ok {
-				t.Fatal("insert didn't find item", m)
+				t.Fatal("set didn't find item", m)
 			}
 		}
 		mink, minv := tr.Min()
@@ -106,12 +106,25 @@ func TestBTree(t *testing.T) {
 		}
 
 		for _, m := range perm(treeSize) {
-			if x := tr.Delete(m.key); x == (item{}) {
+			if _, removed := tr.Delete(m.key); !removed {
 				t.Fatalf("didn't find %v", m)
 			}
 		}
 		if got = all(tr.BeforeMin()); len(got) > 0 {
 			t.Fatalf("some left!: %v", got)
+		}
+	}
+}
+
+func TestAt(t *testing.T) {
+	tr := New(*btreeDegree)
+	for _, m := range perm(100) {
+		tr.Set(m.key, m.value)
+	}
+	for i := 0; i < tr.Len(); i++ {
+		gotk, gotv := tr.At(i)
+		if want := Int(i); gotk != want || gotv != want {
+			t.Fatalf("At(%d) = (%v, %v), want (%v, %v)", i, gotk, gotv, want, want)
 		}
 	}
 }
@@ -124,13 +137,17 @@ func ExampleBTree() {
 	fmt.Println("len:       ", tr.Len())
 	fmt.Println("get3:      ", tr.Get(Int(3)))
 	fmt.Println("get100:    ", tr.Get(Int(100)))
-	fmt.Println("del4:      ", tr.Delete(Int(4)))
-	fmt.Println("del100:    ", tr.Delete(Int(100)))
+	k, v := tr.At(7)
+	fmt.Println("at7:       ", k, v)
+	d, ok := tr.Delete(Int(4))
+	fmt.Println("del4:      ", d, ok)
+	d, ok = tr.Delete(Int(100))
+	fmt.Println("del100:    ", d, ok)
 	old, ok := tr.Set(Int(5), 11)
 	fmt.Println("set5:      ", old, ok)
 	old, ok = tr.Set(Int(100), 100)
 	fmt.Println("set100:    ", old, ok)
-	k, v := tr.Min()
+	k, v = tr.Min()
 	fmt.Println("min:       ", k, v)
 	k, v = tr.DeleteMin()
 	fmt.Println("delmin:    ", k, v)
@@ -143,8 +160,9 @@ func ExampleBTree() {
 	// len:        10
 	// get3:       3
 	// get100:     <nil>
-	// del4:       4
-	// del100:     <nil>
+	// at7:        7 7
+	// del4:       4 true
+	// del100:     <nil> false
 	// set5:       5 true
 	// set100:     <nil> false
 	// min:        0 0
