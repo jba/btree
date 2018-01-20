@@ -19,6 +19,7 @@ package btree
 
 import (
 	"fmt"
+	"sort"
 	"testing"
 )
 
@@ -180,6 +181,57 @@ func BenchmarkGetCloneEachTime(b *testing.B) {
 			}
 		})
 	}
+}
+
+func BenchmarkFind(b *testing.B) {
+	for _, d := range degrees {
+		var items []item
+		for i := 0; i < 2*d; i++ {
+			items = append(items, item{Int(i), i})
+		}
+		b.Run(fmt.Sprintf("size=%d", len(items)), func(b *testing.B) {
+			for _, alg := range []struct {
+				name string
+				fun  func(Key, []item) (int, bool)
+			}{
+				{"binary", findBinary},
+				{"linear", findLinear},
+			} {
+				b.Run(alg.name, func(b *testing.B) {
+					for i := 0; i < b.N; i++ {
+						for j := 0; j < len(items); j++ {
+							pos, found := alg.fun(items[j].key, items)
+							if pos != j || !found {
+								b.Fatal("bad result")
+							}
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func findBinary(k Key, s []item) (int, bool) {
+	i := sort.Search(len(s), func(i int) bool { return k.Less(s[i].key) })
+	// i is the smallest index of s for which key.Less(s[i].Key), or len(s).
+	if i > 0 && !s[i-1].key.Less(k) {
+		return i - 1, true
+	}
+	return i, false
+}
+
+func findLinear(k Key, s []item) (int, bool) {
+	var i int
+	for i = 0; i < len(s); i++ {
+		if k.Less(s[i].key) {
+			break
+		}
+	}
+	if i > 0 && !s[i-1].key.Less(k) {
+		return i - 1, true
+	}
+	return i, false
 }
 
 type byInts []item
