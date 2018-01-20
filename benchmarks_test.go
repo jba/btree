@@ -37,7 +37,7 @@ func BenchmarkInsert(b *testing.B) {
 			for i < b.N {
 				tr := New(d)
 				for _, m := range insertP {
-					tr.Set(m.key, m.value)
+					tr.Set(m.Key, m.Value)
 					i++
 					if i >= b.N {
 						return
@@ -54,13 +54,13 @@ func BenchmarkDeleteInsert(b *testing.B) {
 		b.Run(fmt.Sprintf("degree=%d", d), func(b *testing.B) {
 			tr := New(d)
 			for _, m := range insertP {
-				tr.Set(m.key, m.value)
+				tr.Set(m.Key, m.Value)
 			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				m := insertP[i%benchmarkTreeSize]
-				tr.Delete(m.key)
-				tr.Set(m.key, m.value)
+				tr.Delete(m.Key)
+				tr.Set(m.Key, m.Value)
 			}
 		})
 	}
@@ -72,14 +72,14 @@ func BenchmarkDeleteInsertCloneOnce(b *testing.B) {
 		b.Run(fmt.Sprintf("degree=%d", d), func(b *testing.B) {
 			tr := New(d)
 			for _, m := range insertP {
-				tr.Set(m.key, m.value)
+				tr.Set(m.Key, m.Value)
 			}
 			tr = tr.Clone()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				m := insertP[i%benchmarkTreeSize]
-				tr.Delete(m.key)
-				tr.Set(m.key, m.value)
+				tr.Delete(m.Key)
+				tr.Set(m.Key, m.Value)
 			}
 		})
 	}
@@ -91,14 +91,14 @@ func BenchmarkDeleteInsertCloneEachTime(b *testing.B) {
 		b.Run(fmt.Sprintf("degree=%d", d), func(b *testing.B) {
 			tr := New(d)
 			for _, m := range insertP {
-				tr.Set(m.key, m.value)
+				tr.Set(m.Key, m.Value)
 			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				tr = tr.Clone()
 				m := insertP[i%benchmarkTreeSize]
-				tr.Delete(m.key)
-				tr.Set(m.key, m.value)
+				tr.Delete(m.Key)
+				tr.Set(m.Key, m.Value)
 			}
 		})
 	}
@@ -114,11 +114,11 @@ func BenchmarkDelete(b *testing.B) {
 				b.StopTimer()
 				tr := New(d)
 				for _, v := range insertP {
-					tr.Set(v.key, v.value)
+					tr.Set(v.Key, v.Value)
 				}
 				b.StartTimer()
 				for _, m := range removeP {
-					tr.Delete(m.key)
+					tr.Delete(m.Key)
 					i++
 					if i >= b.N {
 						return
@@ -142,11 +142,11 @@ func BenchmarkGet(b *testing.B) {
 				b.StopTimer()
 				tr := New(d)
 				for _, v := range insertP {
-					tr.Set(v.key, v.value)
+					tr.Set(v.Key, v.Value)
 				}
 				b.StartTimer()
 				for _, m := range getP {
-					tr.Get(m.key)
+					tr.Get(m.Key)
 					i++
 					if i >= b.N {
 						return
@@ -167,11 +167,11 @@ func BenchmarkGetWithIndex(b *testing.B) {
 				b.StopTimer()
 				tr := New(d)
 				for _, v := range insertP {
-					tr.Set(v.key, v.value)
+					tr.Set(v.Key, v.Value)
 				}
 				b.StartTimer()
 				for _, m := range getP {
-					tr.GetWithIndex(m.key)
+					tr.GetWithIndex(m.Key)
 					i++
 					if i >= b.N {
 						return
@@ -192,12 +192,12 @@ func BenchmarkGetCloneEachTime(b *testing.B) {
 				b.StopTimer()
 				tr := New(d)
 				for _, m := range insertP {
-					tr.Set(m.key, m.value)
+					tr.Set(m.Key, m.Value)
 				}
 				b.StartTimer()
 				for _, m := range getP {
 					tr = tr.Clone()
-					tr.Get(m.key)
+					tr.Get(m.Key)
 					i++
 					if i >= b.N {
 						return

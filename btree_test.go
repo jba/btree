@@ -13,8 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// TODO: use cmp instead of reflect.DeepEqual.
-
 package btree
 
 import (
@@ -22,10 +20,11 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func init() {
@@ -35,9 +34,9 @@ func init() {
 }
 
 type itemWithIndex struct {
-	key   Key
-	value Value
-	index int
+	Key   Key
+	Value Value
+	Index int
 }
 
 // perm returns a random permutation of n Int items in the range [0, n).
@@ -95,12 +94,12 @@ func TestBTree(t *testing.T) {
 			t.Fatalf("empty max, got %+v", max)
 		}
 		for _, m := range perm(treeSize) {
-			if _, ok := tr.Set(m.key, m.value); ok {
+			if _, ok := tr.Set(m.Key, m.Value); ok {
 				t.Fatal("set found item", m)
 			}
 		}
 		for _, m := range perm(treeSize) {
-			if _, ok := tr.Set(m.key, m.value); !ok {
+			if _, ok := tr.Set(m.Key, m.Value); !ok {
 				t.Fatal("set didn't find item", m)
 			}
 		}
@@ -114,12 +113,12 @@ func TestBTree(t *testing.T) {
 		}
 		got := all(tr.BeforeIndex(0))
 		want := rang(treeSize)
-		if !reflect.DeepEqual(got, want) {
+		if !cmp.Equal(got, want) {
 			t.Fatalf("mismatch:\n got: %v\nwant: %v", got, want)
 		}
 
 		for _, m := range perm(treeSize) {
-			if _, removed := tr.Delete(m.key); !removed {
+			if _, removed := tr.Delete(m.Key); !removed {
 				t.Fatalf("didn't find %v", m)
 			}
 		}
@@ -132,7 +131,7 @@ func TestBTree(t *testing.T) {
 func TestAt(t *testing.T) {
 	tr := New(*btreeDegree)
 	for _, m := range perm(100) {
-		tr.Set(m.key, m.value)
+		tr.Set(m.Key, m.Value)
 	}
 	for i := 0; i < tr.Len(); i++ {
 		gotk, gotv := tr.At(i)
@@ -145,7 +144,7 @@ func TestAt(t *testing.T) {
 func TestGetWithIndex(t *testing.T) {
 	tr := New(*btreeDegree)
 	for _, m := range perm(100) {
-		tr.Set(m.key, m.value)
+		tr.Set(m.Key, m.Value)
 	}
 	for i := 0; i < tr.Len(); i++ {
 		gotv, goti := tr.GetWithIndex(Int(i))
@@ -207,14 +206,14 @@ func ExampleBTree() {
 func TestDeleteMin(t *testing.T) {
 	tr := New(3)
 	for _, m := range perm(100) {
-		tr.Set(m.key, m.value)
+		tr.Set(m.Key, m.Value)
 	}
 	var got []itemWithIndex
 	for i := 0; tr.Len() > 0; i++ {
 		k, v := tr.DeleteMin()
 		got = append(got, itemWithIndex{k, v, i})
 	}
-	if want := rang(100); !reflect.DeepEqual(got, want) {
+	if want := rang(100); !cmp.Equal(got, want) {
 		t.Fatalf("got: %v\nwant: %v", got, want)
 	}
 }
@@ -222,7 +221,7 @@ func TestDeleteMin(t *testing.T) {
 func TestDeleteMax(t *testing.T) {
 	tr := New(3)
 	for _, m := range perm(100) {
-		tr.Set(m.key, m.value)
+		tr.Set(m.Key, m.Value)
 	}
 	var got []itemWithIndex
 	for tr.Len() > 0 {
@@ -230,7 +229,7 @@ func TestDeleteMax(t *testing.T) {
 		got = append(got, itemWithIndex{k, v, tr.Len()})
 	}
 	reverse(got)
-	if want := rang(100); !reflect.DeepEqual(got, want) {
+	if want := rang(100); !cmp.Equal(got, want) {
 		t.Fatalf("got: %v\nwant: %v", got, want)
 	}
 }
@@ -269,41 +268,41 @@ func TestIterator(t *testing.T) {
 	// Tree with size elements.
 	p := perm(size)
 	for _, v := range p {
-		tr.Set(v.key, v.value)
+		tr.Set(v.Key, v.Value)
 	}
 
 	it := tr.BeforeIndex(0)
 	got := all(it)
 	want := rang(size)
-	if !reflect.DeepEqual(got, want) {
+	if !cmp.Equal(got, want) {
 		t.Fatalf("got %+v\nwant %+v\n", got, want)
 	}
 
 	for i, w := range want {
-		it := tr.Before(w.key)
+		it := tr.Before(w.Key)
 		got = all(it)
-		wn := want[w.key.(Int):]
-		if !reflect.DeepEqual(got, wn) {
+		wn := want[w.Key.(Int):]
+		if !cmp.Equal(got, wn) {
 			t.Fatalf("got %+v\nwant %+v\n", got, wn)
 		}
 
 		it = tr.BeforeIndex(i)
 		got = all(it)
-		if !reflect.DeepEqual(got, wn) {
+		if !cmp.Equal(got, wn) {
 			t.Fatalf("got %+v\nwant %+v\n", got, wn)
 		}
 
-		it = tr.After(w.key)
+		it = tr.After(w.Key)
 		got = all(it)
-		wn = append([]itemWithIndex(nil), want[:w.key.(Int)+1]...)
+		wn = append([]itemWithIndex(nil), want[:w.Key.(Int)+1]...)
 		reverse(wn)
-		if !reflect.DeepEqual(got, wn) {
+		if !cmp.Equal(got, wn) {
 			t.Fatalf("got %+v\nwant %+v\n", got, wn)
 		}
 
 		it = tr.AfterIndex(i)
 		got = all(it)
-		if !reflect.DeepEqual(got, wn) {
+		if !cmp.Equal(got, wn) {
 			t.Fatalf("got %+v\nwant %+v\n", got, wn)
 		}
 	}
@@ -311,7 +310,7 @@ func TestIterator(t *testing.T) {
 	// Non-existent keys.
 	tr = New(2)
 	for _, v := range p {
-		tr.Set(Int(v.key.(Int)*2), v.value)
+		tr.Set(Int(v.Key.(Int)*2), v.Value)
 	}
 	// tr has only even keys: 0, 2, 4, ... Iterate from odd keys.
 	for i := -1; i <= size+1; i += 2 {
@@ -321,7 +320,7 @@ func TestIterator(t *testing.T) {
 		for j := (i + 1) / 2; j < size; j++ {
 			want = append(want, itemWithIndex{Int(j) * 2, Int(j), j})
 		}
-		if !reflect.DeepEqual(got, want) {
+		if !cmp.Equal(got, want) {
 			tr.print(os.Stdout)
 			t.Fatalf("%d: got %+v\nwant %+v\n", i, got, want)
 		}
@@ -332,7 +331,7 @@ func TestIterator(t *testing.T) {
 		for j := (i - 1) / 2; j >= 0; j-- {
 			want = append(want, itemWithIndex{Int(j) * 2, Int(j), j})
 		}
-		if !reflect.DeepEqual(got, want) {
+		if !cmp.Equal(got, want) {
 			t.Fatalf("%d: got %+v\nwant %+v\n", i, got, want)
 		}
 	}
@@ -380,7 +379,7 @@ const cloneTestSize = 10000
 func cloneTest(t *testing.T, b *BTree, start int, p []itemWithIndex, wg *sync.WaitGroup, treec chan<- *BTree) {
 	treec <- b
 	for i := start; i < cloneTestSize; i++ {
-		b.Set(p[i].key, p[i].value)
+		b.Set(p[i].Key, p[i].Value)
 		if i%(cloneTestSize/5) == 0 {
 			wg.Add(1)
 			go cloneTest(t, b.Clone(), i+1, p, wg, treec)
@@ -409,7 +408,7 @@ func TestCloneConcurrentOperations(t *testing.T) {
 	<-donec
 	want := rang(cloneTestSize)
 	for i, tree := range trees {
-		if !reflect.DeepEqual(want, all(tree.BeforeIndex(0))) {
+		if !cmp.Equal(want, all(tree.BeforeIndex(0))) {
 			t.Errorf("tree %v mismatch", i)
 		}
 	}
@@ -419,7 +418,7 @@ func TestCloneConcurrentOperations(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			for _, m := range toRemove {
-				tree.Delete(m.key)
+				tree.Delete(m.Key)
 			}
 			wg.Done()
 		}()
@@ -432,7 +431,7 @@ func TestCloneConcurrentOperations(t *testing.T) {
 		} else {
 			wantpart = want
 		}
-		if got := all(tree.BeforeIndex(0)); !reflect.DeepEqual(wantpart, got) {
+		if got := all(tree.BeforeIndex(0)); !cmp.Equal(wantpart, got) {
 			t.Errorf("tree %v mismatch, want %v got %v", i, len(want), len(got))
 		}
 	}
