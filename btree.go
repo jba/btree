@@ -659,6 +659,8 @@ func (t *BTree) deleteItem(key Key, typ toRemove) (item, bool) {
 
 // Get returns the value for the given key in the tree, or the zero value if the
 // key is not in the tree.
+//
+// To distinguish a zero value from a key that is not present, use GetWithIndex.
 func (t *BTree) Get(k Key) Value {
 	var z Value
 	if t.root == nil {

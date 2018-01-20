@@ -314,6 +314,43 @@ func TestIterator(t *testing.T) {
 	}
 }
 
+func TestMixed(t *testing.T) {
+	// Test random, mixed insertions and deletions.
+	const maxSize = 1000
+	tr := New(3)
+	has := map[int]bool{}
+	for i := 0; i < 10000; i++ {
+		r := rand.Intn(maxSize)
+		if r >= tr.Len() {
+			old, ok := tr.Set(Int(r), r)
+			if has[r] != ok {
+				t.Fatalf("%d: has=%t, ok=%t", r, has[r], ok)
+			}
+			if ok && old.(int) != r {
+				t.Fatalf("%d: bad old", r)
+			}
+			has[r] = true
+			if got, want := tr.Get(Int(r)), r; got != want {
+				t.Fatalf("Get(%d) = %d, want %d", r, got, want)
+			}
+		} else {
+			// Expoit random map iteration order.
+			var d int
+			for d = range has {
+				break
+			}
+			old, removed := tr.Delete(Int(d))
+			if !removed {
+				t.Fatalf("%d not found", d)
+			}
+			if old.(int) != d {
+				t.Fatalf("%d: bad old", d)
+			}
+			delete(has, d)
+		}
+	}
+}
+
 const cloneTestSize = 10000
 
 func cloneTest(t *testing.T, b *BTree, start int, p []item, wg *sync.WaitGroup, treec chan<- *BTree) {

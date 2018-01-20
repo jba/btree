@@ -225,10 +225,7 @@ func BenchmarkFind(b *testing.B) {
 				b.Run(alg.name, func(b *testing.B) {
 					for i := 0; i < b.N; i++ {
 						for j := 0; j < len(items); j++ {
-							pos, found := alg.fun(items[j].key, items)
-							if pos != j || !found {
-								b.Fatal("bad result")
-							}
+							alg.fun(items[j].key, items)
 						}
 					}
 				})
