@@ -305,15 +305,36 @@ func (n *node) insert(m item, maxItems int) (old Value, present bool) {
 
 // get finds the given key in the subtree and returns the corresponding item, along with a boolean reporting
 // whether it was found.
-func (n *node) get(k Key) (item, bool) {
+// If withIndex is true, it also returns the index of the key relative to the node's subtree.
+func (n *node) get(k Key, withIndex bool) (item, bool, int) {
 	i, found := n.items.find(k)
 	if found {
-		return n.items[i], true
+		idx := i
+		if withIndex && len(n.children) > 0 {
+			idx = n.partialSize(i+1) - 1
+		}
+		return n.items[i], true, idx
 	}
 	if len(n.children) > 0 {
-		return n.children[i].get(k)
+		m, found, index := n.children[i].get(k, withIndex)
+		if withIndex && found {
+			index += n.partialSize(i)
+		}
+		return m, found, index
 	}
-	return item{}, false
+	return item{}, false, -1
+}
+
+// Returns the size of the non-leaf node up to but not including child i.
+func (n *node) partialSize(i int) int {
+	var sz int
+	for j, c := range n.children {
+		if j == i {
+			break
+		}
+		sz += c.size + 1
+	}
+	return sz
 }
 
 // cursorStackFor returns a stack of cursors for the key. The second return value reports
@@ -636,18 +657,29 @@ func (t *BTree) deleteItem(key Key, typ toRemove) (item, bool) {
 	return out, removed
 }
 
-// Get returns the value corresponding to key in the tree, or the zero value if the
+// Get returns the value for the given key in the tree, or the zero value if the
 // key is not in the tree.
 func (t *BTree) Get(k Key) Value {
 	var z Value
 	if t.root == nil {
 		return z
 	}
-	item, ok := t.root.get(k)
+	item, ok, _ := t.root.get(k, false)
 	if !ok {
 		return z
 	}
 	return item.value
+}
+
+// GetWithIndex returns the value and index for the given key in the tree, or the
+// zero value and -1 if the key is not in the tree.
+func (t *BTree) GetWithIndex(k Key) (Value, int) {
+	var z Value
+	if t.root == nil {
+		return z, -1
+	}
+	item, _, index := t.root.get(k, true)
+	return item.value, index
 }
 
 // At returns the key and value at index i. The minimum item has index 0.
@@ -665,7 +697,7 @@ func (t *BTree) Has(k Key) bool {
 	if t.root == nil {
 		return false
 	}
-	_, ok := t.root.get(k)
+	_, ok, _ := t.root.get(k, false)
 	return ok
 }
 

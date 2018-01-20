@@ -129,6 +129,25 @@ func TestAt(t *testing.T) {
 	}
 }
 
+func TestGetWithIndex(t *testing.T) {
+	tr := New(*btreeDegree)
+	for _, m := range perm(100) {
+		tr.Set(m.key, m.value)
+	}
+	for i := 0; i < tr.Len(); i++ {
+		gotv, goti := tr.GetWithIndex(Int(i))
+		wantv, wanti := Int(i), i
+		if gotv != wantv || goti != wanti {
+			t.Errorf("GetWithIndex(%d) = (%v, %v), want (%v, %v)",
+				i, gotv, goti, wantv, wanti)
+		}
+	}
+	_, got := tr.GetWithIndex(Int(100))
+	if want := -1; got != want {
+		t.Errorf("got %d, want %d", got, want)
+	}
+}
+
 func ExampleBTree() {
 	tr := New(*btreeDegree)
 	for i := 0; i < 10; i++ {

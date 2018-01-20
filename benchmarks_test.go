@@ -134,7 +134,7 @@ func BenchmarkDelete(b *testing.B) {
 
 func BenchmarkGet(b *testing.B) {
 	insertP := perm(benchmarkTreeSize)
-	removeP := perm(benchmarkTreeSize)
+	getP := perm(benchmarkTreeSize)
 	for _, d := range degrees {
 		b.Run(fmt.Sprintf("degree=%d", d), func(b *testing.B) {
 			i := 0
@@ -145,8 +145,33 @@ func BenchmarkGet(b *testing.B) {
 					tr.Set(v.key, v.value)
 				}
 				b.StartTimer()
-				for _, m := range removeP {
+				for _, m := range getP {
 					tr.Get(m.key)
+					i++
+					if i >= b.N {
+						return
+					}
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkGetWithIndex(b *testing.B) {
+	insertP := perm(benchmarkTreeSize)
+	getP := perm(benchmarkTreeSize)
+	for _, d := range degrees {
+		b.Run(fmt.Sprintf("degree=%d", d), func(b *testing.B) {
+			i := 0
+			for i < b.N {
+				b.StopTimer()
+				tr := New(d)
+				for _, v := range insertP {
+					tr.Set(v.key, v.value)
+				}
+				b.StartTimer()
+				for _, m := range getP {
+					tr.GetWithIndex(m.key)
 					i++
 					if i >= b.N {
 						return
@@ -159,7 +184,7 @@ func BenchmarkGet(b *testing.B) {
 
 func BenchmarkGetCloneEachTime(b *testing.B) {
 	insertP := perm(benchmarkTreeSize)
-	removeP := perm(benchmarkTreeSize)
+	getP := perm(benchmarkTreeSize)
 	for _, d := range degrees {
 		b.Run(fmt.Sprintf("degree=%d", d), func(b *testing.B) {
 			i := 0
@@ -170,7 +195,7 @@ func BenchmarkGetCloneEachTime(b *testing.B) {
 					tr.Set(m.key, m.value)
 				}
 				b.StartTimer()
-				for _, m := range removeP {
+				for _, m := range getP {
 					tr = tr.Clone()
 					tr.Get(m.key)
 					i++
