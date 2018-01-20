@@ -1,4 +1,5 @@
 // Copyright 2014 Google Inc.
+// Modified 2018 by Jonathan Amsterdam (jbamsterdam@gmail.com)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// TODO: use cmp instead of reflect.DeepEqual.
+
 package btree
 
 import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"os"
 	"reflect"
 	"sync"
 	"testing"
@@ -30,40 +34,49 @@ func init() {
 	rand.Seed(seed)
 }
 
+type itemWithIndex struct {
+	key   Key
+	value Value
+	index int
+}
+
 // perm returns a random permutation of n Int items in the range [0, n).
-func perm(n int) (out []item) {
+func perm(n int) []itemWithIndex {
+	var out []itemWithIndex
 	for _, v := range rand.Perm(n) {
-		i := Int(v)
-		out = append(out, item{i, i})
+		out = append(out, itemWithIndex{Int(v), Int(v), v})
 	}
-	return
+	return out
 }
 
 // rang returns an ordered list of Int items in the range [0, n).
-func rang(n int) (out []item) {
+func rang(n int) []itemWithIndex {
+	var out []itemWithIndex
 	for i := 0; i < n; i++ {
-		out = append(out, item{Int(i), Int(i)})
+		out = append(out, itemWithIndex{Int(i), Int(i), i})
 	}
-	return
+	return out
 }
 
 // all extracts all items from an iterator.
-func all(it *Iterator) (out []item) {
+func all(it *Iterator) []itemWithIndex {
+	var out []itemWithIndex
 	for it.Next() {
-		out = append(out, item{it.Key, it.Value})
+		out = append(out, itemWithIndex{it.Key, it.Value, it.Index})
 	}
-	return
+	return out
 }
 
 // rangerev returns a reversed ordered list of Int items in the range [0, n).
-func rangrev(n int) (out []item) {
+func rangrev(n int) []itemWithIndex {
+	var out []itemWithIndex
 	for i := n - 1; i >= 0; i-- {
-		out = append(out, item{Int(i), Int(i)})
+		out = append(out, itemWithIndex{Int(i), i, i})
 	}
-	return
+	return out
 }
 
-func reverse(s []item) {
+func reverse(s []itemWithIndex) {
 	for i := 0; i < len(s)/2; i++ {
 		s[i], s[len(s)-i-1] = s[len(s)-i-1], s[i]
 	}
@@ -99,7 +112,7 @@ func TestBTree(t *testing.T) {
 		if want := Int(treeSize - 1); maxk != want || maxv != want {
 			t.Fatalf("max: want %+v, got %+v, %+v", want, maxk, maxv)
 		}
-		got := all(tr.BeforeMin())
+		got := all(tr.BeforeIndex(0))
 		want := rang(treeSize)
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("mismatch:\n got: %v\nwant: %v", got, want)
@@ -110,7 +123,7 @@ func TestBTree(t *testing.T) {
 				t.Fatalf("didn't find %v", m)
 			}
 		}
-		if got = all(tr.BeforeMin()); len(got) > 0 {
+		if got = all(tr.BeforeIndex(0)); len(got) > 0 {
 			t.Fatalf("some left!: %v", got)
 		}
 	}
@@ -196,10 +209,10 @@ func TestDeleteMin(t *testing.T) {
 	for _, m := range perm(100) {
 		tr.Set(m.key, m.value)
 	}
-	var got []item
-	for tr.Len() > 0 {
+	var got []itemWithIndex
+	for i := 0; tr.Len() > 0; i++ {
 		k, v := tr.DeleteMin()
-		got = append(got, item{k, v})
+		got = append(got, itemWithIndex{k, v, i})
 	}
 	if want := rang(100); !reflect.DeepEqual(got, want) {
 		t.Fatalf("got: %v\nwant: %v", got, want)
@@ -211,10 +224,10 @@ func TestDeleteMax(t *testing.T) {
 	for _, m := range perm(100) {
 		tr.Set(m.key, m.value)
 	}
-	var got []item
+	var got []itemWithIndex
 	for tr.Len() > 0 {
 		k, v := tr.DeleteMax()
-		got = append(got, item{k, v})
+		got = append(got, itemWithIndex{k, v, tr.Len()})
 	}
 	reverse(got)
 	if want := rang(100); !reflect.DeepEqual(got, want) {
@@ -223,12 +236,12 @@ func TestDeleteMax(t *testing.T) {
 }
 
 func TestIterator(t *testing.T) {
-	const size = 100
+	const size = 10
 
 	tr := New(2)
 	// Empty tree.
 	for i, it := range []*Iterator{
-		tr.BeforeMin(),
+		tr.BeforeIndex(0),
 		tr.Before(Int(3)),
 		tr.After(Int(3)),
 	} {
@@ -244,7 +257,7 @@ func TestIterator(t *testing.T) {
 		t.Fatal("wrong shape tree")
 	}
 	for i, it := range []*Iterator{
-		tr.BeforeMin(),
+		tr.BeforeIndex(0),
 		tr.Before(Int(3)),
 		tr.After(Int(3)),
 	} {
@@ -259,27 +272,37 @@ func TestIterator(t *testing.T) {
 		tr.Set(v.key, v.value)
 	}
 
-	it := tr.BeforeMin()
+	it := tr.BeforeIndex(0)
 	got := all(it)
 	want := rang(size)
-	// TODO: text Index
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v\nwant %+v\n", got, want)
 	}
 
-	for _, w := range want {
+	for i, w := range want {
 		it := tr.Before(w.key)
 		got = all(it)
-		// TODO: test it.Index
 		wn := want[w.key.(Int):]
+		if !reflect.DeepEqual(got, wn) {
+			t.Fatalf("got %+v\nwant %+v\n", got, wn)
+		}
+
+		it = tr.BeforeIndex(i)
+		got = all(it)
 		if !reflect.DeepEqual(got, wn) {
 			t.Fatalf("got %+v\nwant %+v\n", got, wn)
 		}
 
 		it = tr.After(w.key)
 		got = all(it)
-		wn = append([]item(nil), want[:w.key.(Int)+1]...)
+		wn = append([]itemWithIndex(nil), want[:w.key.(Int)+1]...)
 		reverse(wn)
+		if !reflect.DeepEqual(got, wn) {
+			t.Fatalf("got %+v\nwant %+v\n", got, wn)
+		}
+
+		it = tr.AfterIndex(i)
+		got = all(it)
 		if !reflect.DeepEqual(got, wn) {
 			t.Fatalf("got %+v\nwant %+v\n", got, wn)
 		}
@@ -294,11 +317,12 @@ func TestIterator(t *testing.T) {
 	for i := -1; i <= size+1; i += 2 {
 		it := tr.Before(Int(i))
 		got := all(it)
-		var want []item
+		var want []itemWithIndex
 		for j := (i + 1) / 2; j < size; j++ {
-			want = append(want, item{Int(j) * 2, Int(j)})
+			want = append(want, itemWithIndex{Int(j) * 2, Int(j), j})
 		}
 		if !reflect.DeepEqual(got, want) {
+			tr.print(os.Stdout)
 			t.Fatalf("%d: got %+v\nwant %+v\n", i, got, want)
 		}
 
@@ -306,7 +330,7 @@ func TestIterator(t *testing.T) {
 		got = all(it)
 		want = nil
 		for j := (i - 1) / 2; j >= 0; j-- {
-			want = append(want, item{Int(j) * 2, Int(j)})
+			want = append(want, itemWithIndex{Int(j) * 2, Int(j), j})
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("%d: got %+v\nwant %+v\n", i, got, want)
@@ -353,7 +377,7 @@ func TestMixed(t *testing.T) {
 
 const cloneTestSize = 10000
 
-func cloneTest(t *testing.T, b *BTree, start int, p []item, wg *sync.WaitGroup, treec chan<- *BTree) {
+func cloneTest(t *testing.T, b *BTree, start int, p []itemWithIndex, wg *sync.WaitGroup, treec chan<- *BTree) {
 	treec <- b
 	for i := start; i < cloneTestSize; i++ {
 		b.Set(p[i].key, p[i].value)
@@ -385,7 +409,7 @@ func TestCloneConcurrentOperations(t *testing.T) {
 	<-donec
 	want := rang(cloneTestSize)
 	for i, tree := range trees {
-		if !reflect.DeepEqual(want, all(tree.BeforeMin())) {
+		if !reflect.DeepEqual(want, all(tree.BeforeIndex(0))) {
 			t.Errorf("tree %v mismatch", i)
 		}
 	}
@@ -402,13 +426,13 @@ func TestCloneConcurrentOperations(t *testing.T) {
 	}
 	wg.Wait()
 	for i, tree := range trees {
-		var wantpart []item
+		var wantpart []itemWithIndex
 		if i < len(trees)/2 {
 			wantpart = want[:cloneTestSize/2]
 		} else {
 			wantpart = want
 		}
-		if got := all(tree.BeforeMin()); !reflect.DeepEqual(wantpart, got) {
+		if got := all(tree.BeforeIndex(0)); !reflect.DeepEqual(wantpart, got) {
 			t.Errorf("tree %v mismatch, want %v got %v", i, len(want), len(got))
 		}
 	}

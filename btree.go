@@ -129,10 +129,10 @@ func (s *items) truncate(index int) {
 // find returns the index where an item with key should be inserted into this
 // list.  'found' is true if the item already exists in the list at the given
 // index.
-func (s items) find(key Key) (index int, found bool) {
-	i := sort.Search(len(s), func(i int) bool { return key.Less(s[i].key) })
-	// i is the smallest index of s for which key.Less(s[i].Key), or len(s).
-	if i > 0 && !s[i-1].key.Less(key) {
+func (s items) find(k Key) (index int, found bool) {
+	i := sort.Search(len(s), func(i int) bool { return k.Less(s[i].key) })
+	// i is the smallest index of s for which k.Less(s[i].Key), or len(s).
+	if i > 0 && !s[i-1].key.Less(k) {
 		return i - 1, true
 	}
 	return i, false
@@ -316,11 +316,11 @@ func (n *node) get(k Key, withIndex bool) (item, bool, int) {
 		return n.items[i], true, idx
 	}
 	if len(n.children) > 0 {
-		m, found, index := n.children[i].get(k, withIndex)
+		m, found, idx := n.children[i].get(k, withIndex)
 		if withIndex && found {
-			index += n.partialSize(i)
+			idx += n.partialSize(i)
 		}
-		return m, found, index
+		return m, found, idx
 	}
 	return item{}, false, -1
 }
@@ -337,21 +337,26 @@ func (n *node) partialSize(i int) int {
 	return sz
 }
 
-// cursorStackFor returns a stack of cursors for the key. The second return value reports
-// whether the key was found.
-func (n *node) cursorStackFor(k Key, cs cursorStack) (cursorStack, bool) {
+// cursorStackForKey returns a stack of cursors for the key, along with whether the key was found and the index.
+func (n *node) cursorStackForKey(k Key, cs cursorStack) (cursorStack, bool, int) {
 	i, found := n.items.find(k)
 	cs.push(cursor{n, i})
+	idx := i
 	if found {
-		return cs, true
+		if len(n.children) > 0 {
+			idx = n.partialSize(i+1) - 1
+		}
+		return cs, true, idx
 	}
 	if len(n.children) > 0 {
-		return n.children[i].cursorStackFor(k, cs)
+		cs, found, idx := n.children[i].cursorStackForKey(k, cs)
+		return cs, found, idx + n.partialSize(i)
 	}
-	return cs, false
+	return cs, false, idx
 }
 
 // at returns the item at the i'th position in the subtree rooted at n.
+// It assumes i is in range.
 func (n *node) at(i int) item {
 	if len(n.children) == 0 {
 		return n.items[i]
@@ -363,6 +368,25 @@ func (n *node) at(i int) item {
 		i -= c.size
 		if i == 0 {
 			return n.items[j]
+		}
+		i--
+	}
+	panic("impossible")
+}
+
+// cursorStackForIndex returns a stack of cursors for the index.
+// It assumes i is in range.
+func (n *node) cursorStackForIndex(i int, cs cursorStack) cursorStack {
+	if len(n.children) == 0 {
+		return cs.push(cursor{n, i})
+	}
+	for j, c := range n.children {
+		if i < c.size {
+			return c.cursorStackForIndex(i, cs.push(cursor{n, j}))
+		}
+		i -= c.size
+		if i == 0 {
+			return cs.push(cursor{n, j})
 		}
 		i--
 	}
@@ -756,17 +780,26 @@ func (t *BTree) Before(k Key) *Iterator {
 		return &Iterator{}
 	}
 	var cs cursorStack
-	cs, found := t.root.cursorStackFor(k, cs)
+	cs, found, idx := t.root.cursorStackForKey(k, cs)
 	// If we found the key, the cursor stack is pointing to it. Since that is
 	// the first element we want, don't advance the iterator on the initial call to Next.
 	// If we haven't found the key, then the top of the cursor stack is either pointing at the
 	// item just after k, in which case we do not want to move the iterator; or the index
 	// is past the end of the items slice, in which case we do.
+	var stay bool
 	top := cs[len(cs)-1]
+	if found {
+		stay = true
+	} else if top.index < len(top.node.items) {
+		stay = true
+	} else {
+		idx--
+	}
 	return &Iterator{
 		cursors:    cs,
-		stay:       found || top.index < len(top.node.items),
+		stay:       stay,
 		descending: false,
+		Index:      idx,
 	}
 }
 
@@ -778,7 +811,7 @@ func (t *BTree) After(k Key) *Iterator {
 		return &Iterator{}
 	}
 	var cs cursorStack
-	cs, found := t.root.cursorStackFor(k, cs)
+	cs, found, idx := t.root.cursorStackForKey(k, cs)
 	// If we found the key, the cursor stack is pointing to it. Since that is
 	// the first element we want, don't advance the iterator on the initial call to Next.
 	// If we haven't found the key, the the cursor stack is pointing just after the first item,
@@ -787,16 +820,39 @@ func (t *BTree) After(k Key) *Iterator {
 		cursors:    cs,
 		stay:       found,
 		descending: true,
+		Index:      idx,
 	}
 }
 
-func (t *BTree) BeforeMin() *Iterator {
-	if t.root == nil {
+// BeforeIndex returns an iterator positioned just before the item with the given index.
+// The iterator will traverse the tree's items in ascending order.
+// If i is not in the range [0, tr.Len()], BeforeIndex panics.
+// Note that it is not an error to provide an index of tr.Len().
+func (t *BTree) BeforeIndex(i int) *Iterator {
+	return t.indexIterator(i, false)
+}
+
+// AfterIndex returns an iterator positioned just after the item with the given index.
+// The iterator will traverse the tree's items in descending order.
+// If i is not in the range [0, tr.Len()], AfterIndex panics.
+// Note that it is not an error to provide an index of tr.Len().
+func (t *BTree) AfterIndex(i int) *Iterator {
+	return t.indexIterator(i, true)
+}
+
+func (t *BTree) indexIterator(i int, descending bool) *Iterator {
+	if i < 0 || i > t.Len() {
+		panic("btree: index out of range")
+	}
+	if i == t.Len() {
 		return &Iterator{}
 	}
+	var cs cursorStack
 	return &Iterator{
-		cursors: []cursor{{t.root, -1}},
-		Index:   -1,
+		cursors:    t.root.cursorStackForIndex(i, cs),
+		stay:       true,
+		descending: descending,
+		Index:      i,
 	}
 }
 
@@ -838,7 +894,6 @@ func (it *Iterator) Next() (b bool) {
 	item := top.node.items[top.index]
 	it.Key = item.key
 	it.Value = item.value
-	it.Index++
 	return true
 }
 
@@ -849,6 +904,7 @@ func (it *Iterator) inc() bool {
 	// - Nonleaf nodes have one more child than item, and children[i] < items[i] < children[i+1].
 	// - The current item in the iterator is top.node.items[top.index].
 
+	it.Index++
 	// If we are at a non-leaf node, the current item is items[i], so
 	// now we want to continue with children[i+1], which must exist
 	// by the node invariant. We want the minimum item in that child's subtree.
@@ -876,6 +932,7 @@ func (it *Iterator) inc() bool {
 
 func (it *Iterator) dec() bool {
 	// See the invariants for inc, above.
+	it.Index--
 	top := it.cursors.top()
 	// If we are at a non-leaf node, the current item is items[i], so
 	// now we want to continue with children[i]. We want the maximum item in that child's subtree.
@@ -916,8 +973,9 @@ type cursor struct {
 // A cursorStack is a stack of cursors, representing a path of nodes from the root of the tree.
 type cursorStack []cursor
 
-func (s *cursorStack) push(c cursor) {
+func (s *cursorStack) push(c cursor) cursorStack {
 	*s = append(*s, c)
+	return *s
 }
 
 func (s *cursorStack) pop() cursor {
