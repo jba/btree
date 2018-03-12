@@ -43,7 +43,7 @@ type itemWithIndex struct {
 func perm(n int) []itemWithIndex {
 	var out []itemWithIndex
 	for _, v := range rand.Perm(n) {
-		out = append(out, itemWithIndex{Int(v), Int(v), v})
+		out = append(out, itemWithIndex{v, v, v})
 	}
 	return out
 }
@@ -52,7 +52,7 @@ func perm(n int) []itemWithIndex {
 func rang(n int) []itemWithIndex {
 	var out []itemWithIndex
 	for i := 0; i < n; i++ {
-		out = append(out, itemWithIndex{Int(i), Int(i), i})
+		out = append(out, itemWithIndex{i, i, i})
 	}
 	return out
 }
@@ -70,7 +70,7 @@ func all(it *Iterator) []itemWithIndex {
 func rangrev(n int) []itemWithIndex {
 	var out []itemWithIndex
 	for i := n - 1; i >= 0; i-- {
-		out = append(out, itemWithIndex{Int(i), i, i})
+		out = append(out, itemWithIndex{i, i, i})
 	}
 	return out
 }
@@ -84,7 +84,7 @@ func reverse(s []itemWithIndex) {
 var btreeDegree = flag.Int("degree", 32, "B-Tree degree")
 
 func TestBTree(t *testing.T) {
-	tr := New(*btreeDegree)
+	tr := New(*btreeDegree, less)
 	const treeSize = 10000
 	for i := 0; i < 10; i++ {
 		if min, _ := tr.Min(); min != nil {
@@ -104,11 +104,11 @@ func TestBTree(t *testing.T) {
 			}
 		}
 		mink, minv := tr.Min()
-		if want := Int(0); mink != want || minv != want {
+		if want := 0; mink != want || minv != want {
 			t.Fatalf("min: want %+v, got %+v, %+v", want, mink, minv)
 		}
 		maxk, maxv := tr.Max()
-		if want := Int(treeSize - 1); maxk != want || maxv != want {
+		if want := treeSize - 1; maxk != want || maxv != want {
 			t.Fatalf("max: want %+v, got %+v, %+v", want, maxk, maxv)
 		}
 		got := all(tr.BeforeIndex(0))
@@ -129,39 +129,39 @@ func TestBTree(t *testing.T) {
 }
 
 func TestAt(t *testing.T) {
-	tr := New(*btreeDegree)
+	tr := New(*btreeDegree, less)
 	for _, m := range perm(100) {
 		tr.Set(m.Key, m.Value)
 	}
 	for i := 0; i < tr.Len(); i++ {
 		gotk, gotv := tr.At(i)
-		if want := Int(i); gotk != want || gotv != want {
+		if want := i; gotk != want || gotv != want {
 			t.Fatalf("At(%d) = (%v, %v), want (%v, %v)", i, gotk, gotv, want, want)
 		}
 	}
 }
 
 func TestGetWithIndex(t *testing.T) {
-	tr := New(*btreeDegree)
+	tr := New(*btreeDegree, less)
 	for _, m := range perm(100) {
 		tr.Set(m.Key, m.Value)
 	}
 	for i := 0; i < tr.Len(); i++ {
-		gotv, goti := tr.GetWithIndex(Int(i))
-		wantv, wanti := Int(i), i
+		gotv, goti := tr.GetWithIndex(i)
+		wantv, wanti := i, i
 		if gotv != wantv || goti != wanti {
 			t.Errorf("GetWithIndex(%d) = (%v, %v), want (%v, %v)",
 				i, gotv, goti, wantv, wanti)
 		}
 	}
-	_, got := tr.GetWithIndex(Int(100))
+	_, got := tr.GetWithIndex(100)
 	if want := -1; got != want {
 		t.Errorf("got %d, want %d", got, want)
 	}
 }
 
 func TestDeleteMin(t *testing.T) {
-	tr := New(3)
+	tr := New(3, less)
 	for _, m := range perm(100) {
 		tr.Set(m.Key, m.Value)
 	}
@@ -176,7 +176,7 @@ func TestDeleteMin(t *testing.T) {
 }
 
 func TestDeleteMax(t *testing.T) {
-	tr := New(3)
+	tr := New(3, less)
 	for _, m := range perm(100) {
 		tr.Set(m.Key, m.Value)
 	}
@@ -194,12 +194,12 @@ func TestDeleteMax(t *testing.T) {
 func TestIterator(t *testing.T) {
 	const size = 10
 
-	tr := New(2)
+	tr := New(2, less)
 	// Empty tree.
 	for i, it := range []*Iterator{
 		tr.BeforeIndex(0),
-		tr.Before(Int(3)),
-		tr.After(Int(3)),
+		tr.Before(3),
+		tr.After(3),
 	} {
 		if got, want := it.Next(), false; got != want {
 			t.Errorf("empty, #%d: got %t, want %t", i, got, want)
@@ -207,15 +207,15 @@ func TestIterator(t *testing.T) {
 	}
 
 	// Root with zero children.
-	tr.Set(Int(1), nil)
-	tr.Delete(Int(1))
+	tr.Set(1, nil)
+	tr.Delete(1)
 	if !(tr.root != nil && len(tr.root.children) == 0 && len(tr.root.items) == 0) {
 		t.Fatal("wrong shape tree")
 	}
 	for i, it := range []*Iterator{
 		tr.BeforeIndex(0),
-		tr.Before(Int(3)),
-		tr.After(Int(3)),
+		tr.Before(3),
+		tr.After(3),
 	} {
 		if got, want := it.Next(), false; got != want {
 			t.Errorf("zero root, #%d: got %t, want %t", i, got, want)
@@ -238,7 +238,7 @@ func TestIterator(t *testing.T) {
 	for i, w := range want {
 		it := tr.Before(w.Key)
 		got = all(it)
-		wn := want[w.Key.(Int):]
+		wn := want[w.Key.(int):]
 		if !cmp.Equal(got, wn) {
 			t.Fatalf("got %+v\nwant %+v\n", got, wn)
 		}
@@ -251,7 +251,7 @@ func TestIterator(t *testing.T) {
 
 		it = tr.After(w.Key)
 		got = all(it)
-		wn = append([]itemWithIndex(nil), want[:w.Key.(Int)+1]...)
+		wn = append([]itemWithIndex(nil), want[:w.Key.(int)+1]...)
 		reverse(wn)
 		if !cmp.Equal(got, wn) {
 			t.Fatalf("got %+v\nwant %+v\n", got, wn)
@@ -265,28 +265,28 @@ func TestIterator(t *testing.T) {
 	}
 
 	// Non-existent keys.
-	tr = New(2)
+	tr = New(2, less)
 	for _, v := range p {
-		tr.Set(Int(v.Key.(Int)*2), v.Value)
+		tr.Set(v.Key.(int)*2, v.Value)
 	}
 	// tr has only even keys: 0, 2, 4, ... Iterate from odd keys.
 	for i := -1; i <= size+1; i += 2 {
-		it := tr.Before(Int(i))
+		it := tr.Before(i)
 		got := all(it)
 		var want []itemWithIndex
 		for j := (i + 1) / 2; j < size; j++ {
-			want = append(want, itemWithIndex{Int(j) * 2, Int(j), j})
+			want = append(want, itemWithIndex{j * 2, j, j})
 		}
 		if !cmp.Equal(got, want) {
 			tr.print(os.Stdout)
 			t.Fatalf("%d: got %+v\nwant %+v\n", i, got, want)
 		}
 
-		it = tr.After(Int(i))
+		it = tr.After(i)
 		got = all(it)
 		want = nil
 		for j := (i - 1) / 2; j >= 0; j-- {
-			want = append(want, itemWithIndex{Int(j) * 2, Int(j), j})
+			want = append(want, itemWithIndex{j * 2, j, j})
 		}
 		if !cmp.Equal(got, want) {
 			t.Fatalf("%d: got %+v\nwant %+v\n", i, got, want)
@@ -297,12 +297,12 @@ func TestIterator(t *testing.T) {
 func TestMixed(t *testing.T) {
 	// Test random, mixed insertions and deletions.
 	const maxSize = 1000
-	tr := New(3)
+	tr := New(3, less)
 	has := map[int]bool{}
 	for i := 0; i < 10000; i++ {
 		r := rand.Intn(maxSize)
 		if r >= tr.Len() {
-			old, ok := tr.Set(Int(r), r)
+			old, ok := tr.Set(r, r)
 			if has[r] != ok {
 				t.Fatalf("%d: has=%t, ok=%t", r, has[r], ok)
 			}
@@ -310,7 +310,7 @@ func TestMixed(t *testing.T) {
 				t.Fatalf("%d: bad old", r)
 			}
 			has[r] = true
-			if got, want := tr.Get(Int(r)), r; got != want {
+			if got, want := tr.Get(r), r; got != want {
 				t.Fatalf("Get(%d) = %d, want %d", r, got, want)
 			}
 		} else {
@@ -319,7 +319,7 @@ func TestMixed(t *testing.T) {
 			for d = range has {
 				break
 			}
-			old, removed := tr.Delete(Int(d))
+			old, removed := tr.Delete(d)
 			if !removed {
 				t.Fatalf("%d not found", d)
 			}
@@ -346,7 +346,7 @@ func cloneTest(t *testing.T, b *BTree, start int, p []itemWithIndex, wg *sync.Wa
 }
 
 func TestCloneConcurrentOperations(t *testing.T) {
-	b := New(*btreeDegree)
+	b := New(*btreeDegree, less)
 	treec := make(chan *BTree)
 	p := perm(cloneTestSize)
 	var wg sync.WaitGroup
@@ -394,10 +394,4 @@ func TestCloneConcurrentOperations(t *testing.T) {
 	}
 }
 
-// Int implements the Key interface for integers.
-type Int int
-
-// Less returns true if int(a) < int(b).
-func (a Int) Less(b Key) bool {
-	return a < b.(Int)
-}
+func less(a, b interface{}) bool { return a.(int) < b.(int) }

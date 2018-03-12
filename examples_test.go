@@ -22,22 +22,22 @@ import (
 )
 
 func ExampleBTree() {
-	tr := btree.New(32)
+	tr := btree.New(32, func(a, b interface{}) bool { return a.(int) < b.(int) })
 	for i := 0; i < 10; i++ {
-		tr.Set(Int(i), i)
+		tr.Set(i, i)
 	}
 	fmt.Println("len:       ", tr.Len())
-	fmt.Println("get3:      ", tr.Get(Int(3)))
-	fmt.Println("get100:    ", tr.Get(Int(100)))
+	fmt.Println("get3:      ", tr.Get(3))
+	fmt.Println("get100:    ", tr.Get(100))
 	k, v := tr.At(7)
 	fmt.Println("at7:       ", k, v)
-	d, ok := tr.Delete(Int(4))
+	d, ok := tr.Delete(4)
 	fmt.Println("del4:      ", d, ok)
-	d, ok = tr.Delete(Int(100))
+	d, ok = tr.Delete(100)
 	fmt.Println("del100:    ", d, ok)
-	old, ok := tr.Set(Int(5), 11)
+	old, ok := tr.Set(5, 11)
 	fmt.Println("set5:      ", old, ok)
-	old, ok = tr.Set(Int(100), 100)
+	old, ok = tr.Set(100, 100)
 	fmt.Println("set100:    ", old, ok)
 	k, v = tr.Min()
 	fmt.Println("min:       ", k, v)
@@ -65,9 +65,9 @@ func ExampleBTree() {
 }
 
 func ExampleIterator_Next() {
-	tr := btree.New(16)
+	tr := btree.New(16, func(a, b interface{}) bool { return a.(int) < b.(int) })
 	for i := 0; i < 5; i++ {
-		tr.Set(Int(i), i)
+		tr.Set(i, i)
 	}
 	it := tr.BeforeIndex(0)
 	for it.Next() {
@@ -79,12 +79,4 @@ func ExampleIterator_Next() {
 	// 2 2 2
 	// 3 3 3
 	// 4 4 4
-}
-
-// Int implements the Key interface for integers.
-type Int int
-
-// Less returns true if int(a) < int(b).
-func (a Int) Less(b btree.Key) bool {
-	return a < b.(Int)
 }

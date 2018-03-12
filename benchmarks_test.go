@@ -33,7 +33,7 @@ func BenchmarkInsert(b *testing.B) {
 		b.Run(fmt.Sprintf("degree=%d", d), func(b *testing.B) {
 			i := 0
 			for i < b.N {
-				tr := New(d)
+				tr := New(d, less)
 				for _, m := range insertP {
 					tr.Set(m.Key, m.Value)
 					i++
@@ -50,7 +50,7 @@ func BenchmarkDeleteInsert(b *testing.B) {
 	insertP := perm(benchmarkTreeSize)
 	for _, d := range degrees {
 		b.Run(fmt.Sprintf("degree=%d", d), func(b *testing.B) {
-			tr := New(d)
+			tr := New(d, less)
 			for _, m := range insertP {
 				tr.Set(m.Key, m.Value)
 			}
@@ -68,7 +68,7 @@ func BenchmarkDeleteInsertCloneOnce(b *testing.B) {
 	insertP := perm(benchmarkTreeSize)
 	for _, d := range degrees {
 		b.Run(fmt.Sprintf("degree=%d", d), func(b *testing.B) {
-			tr := New(d)
+			tr := New(d, less)
 			for _, m := range insertP {
 				tr.Set(m.Key, m.Value)
 			}
@@ -87,7 +87,7 @@ func BenchmarkDeleteInsertCloneEachTime(b *testing.B) {
 	insertP := perm(benchmarkTreeSize)
 	for _, d := range degrees {
 		b.Run(fmt.Sprintf("degree=%d", d), func(b *testing.B) {
-			tr := New(d)
+			tr := New(d, less)
 			for _, m := range insertP {
 				tr.Set(m.Key, m.Value)
 			}
@@ -110,7 +110,7 @@ func BenchmarkDelete(b *testing.B) {
 			i := 0
 			for i < b.N {
 				b.StopTimer()
-				tr := New(d)
+				tr := New(d, less)
 				for _, v := range insertP {
 					tr.Set(v.Key, v.Value)
 				}
@@ -138,7 +138,7 @@ func BenchmarkGet(b *testing.B) {
 			i := 0
 			for i < b.N {
 				b.StopTimer()
-				tr := New(d)
+				tr := New(d, less)
 				for _, v := range insertP {
 					tr.Set(v.Key, v.Value)
 				}
@@ -163,7 +163,7 @@ func BenchmarkGetWithIndex(b *testing.B) {
 			i := 0
 			for i < b.N {
 				b.StopTimer()
-				tr := New(d)
+				tr := New(d, less)
 				for _, v := range insertP {
 					tr.Set(v.Key, v.Value)
 				}
@@ -188,7 +188,7 @@ func BenchmarkGetCloneEachTime(b *testing.B) {
 			i := 0
 			for i < b.N {
 				b.StopTimer()
-				tr := New(d)
+				tr := New(d, less)
 				for _, m := range insertP {
 					tr.Set(m.Key, m.Value)
 				}
@@ -210,7 +210,7 @@ func BenchmarkFind(b *testing.B) {
 	for _, d := range degrees {
 		var items []item
 		for i := 0; i < 2*d; i++ {
-			items = append(items, item{Int(i), i})
+			items = append(items, item{i, i})
 		}
 		b.Run(fmt.Sprintf("size=%d", len(items)), func(b *testing.B) {
 			for _, alg := range []struct {
@@ -233,9 +233,9 @@ func BenchmarkFind(b *testing.B) {
 }
 
 func findBinary(k Key, s []item) (int, bool) {
-	i := sort.Search(len(s), func(i int) bool { return k.Less(s[i].key) })
+	i := sort.Search(len(s), func(i int) bool { return less(k, s[i].key) })
 	// i is the smallest index of s for which key.Less(s[i].Key), or len(s).
-	if i > 0 && !s[i-1].key.Less(k) {
+	if i > 0 && !less(s[i-1], k) {
 		return i - 1, true
 	}
 	return i, false
@@ -244,11 +244,11 @@ func findBinary(k Key, s []item) (int, bool) {
 func findLinear(k Key, s []item) (int, bool) {
 	var i int
 	for i = 0; i < len(s); i++ {
-		if k.Less(s[i].key) {
+		if less(k, s[i].key) {
 			break
 		}
 	}
-	if i > 0 && !s[i-1].key.Less(k) {
+	if i > 0 && !less(s[i-1].key, k) {
 		return i - 1, true
 	}
 	return i, false
@@ -261,7 +261,7 @@ func (a byInts) Len() int {
 }
 
 func (a byInts) Less(i, j int) bool {
-	return a[i].key.(Int) < a[j].key.(Int)
+	return a[i].key.(int) < a[j].key.(int)
 }
 
 func (a byInts) Swap(i, j int) {
