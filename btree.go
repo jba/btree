@@ -274,17 +274,22 @@ func (n *node) maybeSplitChild(i, maxItems int) bool {
 // insert inserts an item into the subtree rooted at this node, making sure
 // no nodes in the subtree exceed maxItems items.  Should an equivalent item be
 // be found/replaced by insert, its value will be returned.
-func (n *node) insert(m item, maxItems int, less lessFunc) (old Value, present bool) {
+//
+// If withIndex is true, the third return value is the index of the value with respect to n.
+func (n *node) insert(m item, maxItems int, less lessFunc, withIndex bool) (old Value, present bool, idx int) {
 	i, found := n.items.find(m.key, less)
 	if found {
 		out := n.items[i]
 		n.items[i] = m
-		return out.value, true
+		if withIndex {
+			idx = n.itemIndex(i)
+		}
+		return out.value, true, idx
 	}
 	if len(n.children) == 0 {
 		n.items.insertAt(i, m)
 		n.size++
-		return old, false
+		return old, false, i
 	}
 	if n.maybeSplitChild(i, maxItems) {
 		inTree := n.items[i]
@@ -296,14 +301,20 @@ func (n *node) insert(m item, maxItems int, less lessFunc) (old Value, present b
 		default:
 			out := n.items[i]
 			n.items[i] = m
-			return out.value, true
+			if withIndex {
+				idx = n.itemIndex(i)
+			}
+			return out.value, true, idx
 		}
 	}
-	old, present = n.mutableChild(i).insert(m, maxItems, less)
+	old, present, idx = n.mutableChild(i).insert(m, maxItems, less, withIndex)
 	if !present {
 		n.size++
 	}
-	return old, present
+	if withIndex {
+		idx += n.partialSize(i)
+	}
+	return old, present, idx
 }
 
 // get finds the given key in the subtree and returns the corresponding item, along with a boolean reporting
@@ -312,11 +323,7 @@ func (n *node) insert(m item, maxItems int, less lessFunc) (old Value, present b
 func (n *node) get(k Key, withIndex bool, less lessFunc) (item, bool, int) {
 	i, found := n.items.find(k, less)
 	if found {
-		idx := i
-		if withIndex && len(n.children) > 0 {
-			idx = n.partialSize(i+1) - 1
-		}
-		return n.items[i], true, idx
+		return n.items[i], true, n.itemIndex(i)
 	}
 	if len(n.children) > 0 {
 		m, found, idx := n.children[i].get(k, withIndex, less)
@@ -326,6 +333,16 @@ func (n *node) get(k Key, withIndex bool, less lessFunc) (item, bool, int) {
 		return m, found, idx
 	}
 	return item{}, false, -1
+}
+
+// itemIndex returns the index w.r.t. n of the ith item in n.
+func (n *node) itemIndex(i int) int {
+	if len(n.children) == 0 {
+		return i
+	}
+	// Get the size of the node up to but not including the child to the right of
+	// item i. Subtract 1 because the index is 0-based.
+	return n.partialSize(i+1) - 1
 }
 
 // Returns the size of the non-leaf node up to but not including child i.
@@ -618,11 +635,20 @@ func (c *copyOnWriteContext) freeNode(n *node) {
 // return value of true. If the key is not in the tree, it is added, and the second
 // return value is false.
 func (t *BTree) Set(k Key, v Value) (old Value, present bool) {
+	old, present, _ = t.set(k, v, false)
+	return old, present
+}
+
+func (t *BTree) SetWithIndex(k Key, v Value) (old Value, present bool, index int) {
+	return t.set(k, v, true)
+}
+
+func (t *BTree) set(k Key, v Value, withIndex bool) (old Value, present bool, idx int) {
 	if t.root == nil {
 		t.root = t.cow.newNode()
 		t.root.items = append(t.root.items, item{k, v})
 		t.root.size = 1
-		return old, false
+		return old, false, 0
 	}
 	t.root = t.root.mutableFor(t.cow)
 	if len(t.root.items) >= t.maxItems() {
@@ -635,7 +661,7 @@ func (t *BTree) Set(k Key, v Value) (old Value, present bool) {
 		t.root.size = sz
 	}
 
-	return t.root.insert(item{k, v}, t.maxItems(), t.less)
+	return t.root.insert(item{k, v}, t.maxItems(), t.less, withIndex)
 }
 
 // Delete removes the item with the given key, returning its value. The second return value
